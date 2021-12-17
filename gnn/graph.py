@@ -1,3 +1,8 @@
+import numpy as np
+import torch
+from torch_geometric.utils import dense_to_sparse
+
+
 def gen_feature_vec_template(pset):
     prim_list = pset.primitives[object]
     args = pset.arguments
@@ -27,21 +32,27 @@ def node_features(node, template):
     return vec
 
 
-def graph_from_tree(individual, feature_template):
+def compile_tree(individual, feature_template):
+    n_nodes = len(individual)
+    x_features = np.zeros((n_nodes, len(feature_template) + 1))
+    adjacency = np.zeros((n_nodes, n_nodes))
     stack = []
-    for node in reversed(individual):
-        features = node_features(node, feature_template)
-        node_entry = {
-            'features': features,
-            'children': []
-        }
 
-        if len(stack) != node.arity:
-            stack.append(node_entry)
-        else:
-            node_entry['children'] = stack[-node.arity:]
+    for i, node in enumerate(reversed(individual)):
+        features = node_features(node, feature_template)
+        x_features[i] = features
+
+        if node.arity > 0:
+            children = stack[-node.arity:]
             stack = stack[:-node.arity]
-            stack.append(node_entry)
+
+            for child in children:
+                adjacency[child, i] = 1
+
+        stack.append(i)
 
     assert len(stack) == 1, "Invalid tree"
-    return stack[0]
+
+    x_features, adjacency = torch.Tensor(x_features), torch.Tensor(adjacency)
+
+    return x_features, dense_to_sparse(adjacency)
