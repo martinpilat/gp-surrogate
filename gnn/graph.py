@@ -55,4 +55,5 @@ def compile_tree(individual, feature_template):
 
     x_features, adjacency = torch.Tensor(x_features), torch.Tensor(adjacency)
 
-    return x_features, dense_to_sparse(adjacency)
+    # dense_to_sparse returns (edge_index, edge_attributes)
+    return x_features, dense_to_sparse(adjacency)[0]
