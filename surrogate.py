@@ -8,6 +8,7 @@ import pandas as pd
 import statistics
 import numpy as np
 from sklearn import pipeline, ensemble, impute
+
 from gnn.model import GINModel, to_dataset, train
 from gnn.graph import gen_feature_vec_template, compile_tree
 
@@ -95,6 +96,9 @@ class FeatureSurrogate(SurrogateBase):
         ])
 
     def fit(self, inds, fitness, first_gen=False):
+        for ind in inds:
+            ind.features = extract_features(ind, self.pset)
+
         features = [ind.features for ind in inds]
         features_df = pd.concat(features)
 
@@ -105,6 +109,9 @@ class FeatureSurrogate(SurrogateBase):
         return self
 
     def predict(self, inds):
+        for ind in inds:
+            ind.features = extract_features(ind, self.pset)
+
         pred_x = [ind.features for ind in inds]
         pred_x = pd.concat(pred_x)
         preds = self.pipeline.predict(pred_x)
@@ -113,13 +120,14 @@ class FeatureSurrogate(SurrogateBase):
 
 class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
-                 n_epochs=5, batch_size=32, shuffle=True, optimizer=None, loss=None, verbose=True):
+                 n_epochs=200, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
 
         if model is None:
-            model = GINModel(len(self.feature_template))
+            model = GINModel(len(self.feature_template) + 2)
+
         self.model = model
 
         self.n_epochs = n_epochs
@@ -145,7 +153,7 @@ class NeuralNetSurrogate(SurrogateBase):
 
         res = []
         for batch in dataset:
-            pred = self.model(batch)
+            pred = self.model(batch.x, batch.edge_index, batch.batch)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)

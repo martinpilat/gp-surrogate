@@ -26,7 +26,9 @@ def node_features(node, template):
     # constant terminal
     if found:
         vec.append(0)
+        vec.append(0)
     else:
+        vec.append(1)
         vec.append(node.value)
 
     return vec
@@ -34,7 +36,7 @@ def node_features(node, template):
 
 def compile_tree(individual, feature_template):
     n_nodes = len(individual)
-    x_features = np.zeros((n_nodes, len(feature_template) + 1))
+    x_features = np.zeros((n_nodes, len(feature_template) + 2))
     adjacency = np.zeros((n_nodes, n_nodes))
     stack = []
 
@@ -48,8 +50,11 @@ def compile_tree(individual, feature_template):
 
             for child in children:
                 adjacency[child, i] = 1
+                adjacency[i, child] = 1
 
         stack.append(i)
+    #for i in range(n_nodes):
+    #    adjacency[i, i] = 1
 
     assert len(stack) == 1, "Invalid tree"
 

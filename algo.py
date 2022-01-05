@@ -1,3 +1,4 @@
+import sklearn.metrics
 from deap import tools
 import random
 import surrogate
@@ -18,8 +19,8 @@ def add_features(ind, pset):
     return ind
 
 
-def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset, stats=None,
-                        halloffame=None, verbose=__debug__, n_jobs=-1):
+def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
+                        stats=None, halloffame=None, verbose=__debug__, n_jobs=-1, surrogate_cls=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -34,6 +35,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset, stats
     :param n_jobs: the number of jobs use to train the surrogate model and to compute the fitness
     :return: the final population and the log of the run
     """
+    if surrogate_cls is None:
+        surrogate_cls = surrogate.FeatureSurrogate
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
@@ -77,20 +80,17 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset, stats
                 if len(train) > 5000:
                     train = random.sample(archive, 5000)
 
-                features = [ind.features for ind in train if ind.fitness.values[0] < 1000]
-                features_df = pd.concat(features)
+                features = [ind for ind in train if ind.fitness.values[0] < 1000]
                 targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
 
                 # build the surrogate model (random forest regressor)
-                clf = pipeline.Pipeline([('impute', impute.SimpleImputer(strategy='median')),
-                                         ('model', ensemble.RandomForestRegressor(n_estimators=100, max_depth=14, n_jobs=n_jobs))])
-                clf.fit(features_df, targets)
+                clf = surrogate_cls(pset, n_jobs=n_jobs)
+                clf.fit(features, targets)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring if not ind.fitness.valid]
                 invalid_ix = [ix for ix in range(len(offspring)) if not offspring[ix].fitness.valid]
-                pred_x = [ind.features for ind in invalid_ind]
-                pred_x = pd.concat(pred_x)
+                pred_x = [ind for ind in invalid_ind]
                 preds = clf.predict(pred_x)
 
                 # real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
@@ -203,7 +203,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
 
 
 def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
-                       halloffame=None, verbose=__debug__, n_jobs=1):
+                       halloffame=None, verbose=__debug__, n_jobs=1, surrogate_cls=None):
     """ Performs the tests of the model
 
     :param population: the initial population
@@ -217,6 +217,9 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
     :param n_jobs: the number of jobs use to train the surrogate model and to compute the fitness
     :return: the final population and the log of the run
     """
+    if surrogate_cls is None:
+        surrogate_cls = surrogate.FeatureSurrogate
+    #clf = surrogate_cls(pset, n_jobs=n_jobs)
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
@@ -252,24 +255,24 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
             offspring = varAnd(offspring, toolbox, cxpb, mutpb)
 
             train = archive
-            if len(train) > 5000:
-                train = random.sample(archive, 5000)
+            #if len(train) > 5000:
+                #train = random.sample(archive, 5000)
 
-            features = [ind.features for ind in train if ind.fitness.values[0] < 1000]
-            features_df = pd.concat(features)
+            features = [ind for ind in train if ind.fitness.values[0] < 1000]
             targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
 
             # build the surrogate model (random forest regressor)
 
-            if gen == 1:
-                features_df.fillna(0, inplace=True)
-
-            clf = pipeline.Pipeline([('impute', impute.SimpleImputer(strategy='median')), ('model', ensemble.RandomForestRegressor(n_estimators=100, n_jobs=n_jobs, max_depth=14))])
+            clf = surrogate_cls(pset, n_jobs=n_jobs)
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')), ('scale', preprocessing.StandardScaler()), ('svm', svm.SVR())])
 
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')),
             #                          ('model', ensemble.RandomForestRegressor(n_estimators=100, max_depth=14, n_jobs=n_jobs))])
-            clf.fit(features_df, targets)
+            clf.fit(features, targets)
+
+            preds = clf.predict(features)
+            score = sklearn.metrics.mean_squared_error(preds, targets)
+            print(score)
 
             # columns = archive[0].features.columns
             # importances = clf.named_steps['model'].feature_importances_
@@ -279,8 +282,7 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
 
             # Evaluate the individuals with an invalid fitness using the surrogate model
             invalid_ind = [add_features(ind, pset) for ind in offspring if not ind.fitness.valid]
-            pred_x = [ind.features for ind in invalid_ind]
-            pred_x = pd.concat(pred_x)
+            pred_x = [ind for ind in invalid_ind]
             preds = clf.predict(pred_x)
 
             real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
