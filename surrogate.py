@@ -1,9 +1,15 @@
+from abc import abstractmethod
+
+import torch
 from deap import gp
 import itertools
 import collections
 import pandas as pd
 import statistics
 import numpy as np
+from sklearn import pipeline, ensemble, impute
+from gnn.model import GINModel, to_dataset, train
+from gnn.graph import gen_feature_vec_template, compile_tree
 
 
 def extract_features(ind: gp.PrimitiveTree, pset: gp.PrimitiveSetTyped):
@@ -60,3 +66,86 @@ def extract_features(ind: gp.PrimitiveTree, pset: gp.PrimitiveSetTyped):
     frame.columns = ['len', 'height', 'const_count', 'const_mean', 'const_max', 'const_min', 'const_distinct',
                      'arg_count', 'arg_distinct', 'pfit_min', 'pfit_max', 'pfit_avg'] + primitive_names + terminal_names
     return frame
+
+
+class SurrogateBase:
+    def __init__(self, pset, n_jobs=1):
+        self.pset = pset
+        self.n_jobs = n_jobs
+
+    @abstractmethod
+    def fit(self, inds, fitness, first_gen=False):
+        pass
+
+    @abstractmethod
+    def predict(self, inds):
+        pass
+
+
+class FeatureSurrogate(SurrogateBase):
+    def __init__(self, pset, n_jobs=1, model=None):
+        super().__init__(pset, n_jobs)
+
+        if model is None:
+            model = ensemble.RandomForestRegressor(n_estimators=100, n_jobs=self.n_jobs, max_depth=14)
+
+        self.pipeline = pipeline.Pipeline([
+            ('impute', impute.SimpleImputer(strategy='median')),
+            ('model', model)
+        ])
+
+    def fit(self, inds, fitness, first_gen=False):
+        features = [ind.features for ind in inds]
+        features_df = pd.concat(features)
+
+        if first_gen:
+            features_df.fillna(0, inplace=True)
+
+        self.pipeline.fit(features_df, fitness)
+        return self
+
+    def predict(self, inds):
+        pred_x = [ind.features for ind in inds]
+        pred_x = pd.concat(pred_x)
+        preds = self.pipeline.predict(pred_x)
+        return preds
+
+
+class NeuralNetSurrogate(SurrogateBase):
+    def __init__(self, pset, n_jobs=1, model=None,
+                 n_epochs=5, batch_size=32, shuffle=True, optimizer=None, loss=None, verbose=True):
+
+        super().__init__(pset, n_jobs)
+        self.feature_template = gen_feature_vec_template(pset)
+
+        if model is None:
+            model = GINModel(len(self.feature_template))
+        self.model = model
+
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        self.optimizer = optimizer
+        self.criterion = loss
+        self.verbose = verbose
+
+    def fit(self, inds, fitness, first_gen=False):
+        inds = [compile_tree(ind, self.feature_template) for ind in inds]
+        dataset = to_dataset(inds, y_accuracies=fitness, batch_size=self.batch_size, shuffle=self.shuffle)
+
+        train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+              verbose=self.verbose)
+
+        return self
+
+    def predict(self, inds):
+        inds = [compile_tree(ind, self.feature_template) for ind in inds]
+        dataset = to_dataset(inds, batch_size=self.batch_size, shuffle=self.shuffle)
+
+        res = []
+        for batch in dataset:
+            pred = self.model(batch)
+            res.append(pred.detach().cpu().numpy())
+
+        return np.hstack(res)

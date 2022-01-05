@@ -2,7 +2,7 @@ from deap import tools
 import random
 import surrogate
 import pandas as pd
-from sklearn import ensemble, pipeline, preprocessing, svm
+from sklearn import ensemble, pipeline, impute, svm
 import numpy as np
 import joblib
 
@@ -82,7 +82,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset, stats
                 targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
 
                 # build the surrogate model (random forest regressor)
-                clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')),
+                clf = pipeline.Pipeline([('impute', impute.SimpleImputer(strategy='median')),
                                          ('model', ensemble.RandomForestRegressor(n_estimators=100, max_depth=14, n_jobs=n_jobs))])
                 clf.fit(features_df, targets)
 
@@ -264,7 +264,7 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
             if gen == 1:
                 features_df.fillna(0, inplace=True)
 
-            clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')), ('model', ensemble.RandomForestRegressor(n_estimators=100, n_jobs=n_jobs, max_depth=14))])
+            clf = pipeline.Pipeline([('impute', impute.SimpleImputer(strategy='median')), ('model', ensemble.RandomForestRegressor(n_estimators=100, n_jobs=n_jobs, max_depth=14))])
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')), ('scale', preprocessing.StandardScaler()), ('svm', svm.SVR())])
 
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')),

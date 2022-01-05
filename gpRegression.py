@@ -107,7 +107,7 @@ def run_baseline(i, x, y):
 
     # run the baseline algorithm
     pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, 200,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=-1)
+                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1)
 
     return pop, log, hof
 
@@ -143,7 +143,7 @@ def run_model_test(i, x, y):
 
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=-1, pset=pset)
+                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset)
 
     return pop, log, hof, feat_imp
 
@@ -178,7 +178,7 @@ def run_surrogate(i, x, y):
 
     # run the surrogate algorithm
     pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, 15000, pset=pset,
-                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=-1)
+                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1)
 
     return pop, log, hof
 
