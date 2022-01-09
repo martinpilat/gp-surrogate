@@ -8,6 +8,7 @@ import benchmarks
 import algo
 import argparse
 import json
+import gym
 
 # decription of the benchmarks
 import surrogate
@@ -27,7 +28,32 @@ benchmark_description = [
      'pset': benchmarks.get_primitive_set_for_benchmark('nguyen-7', 1)},
     {'name': 'vladislavleva-4',
      'variables': 5,
-     'pset': benchmarks.get_primitive_set_for_benchmark('vladislavleva-4', 5)}
+     'pset': benchmarks.get_primitive_set_for_benchmark('vladislavleva-4', 5)},
+    {'name': 'rl_cartpole',
+     'env_name': 'CartPole-v1',
+     'variables': 4,
+     'output_transform': lambda x: 1 if x > 0 else 0,
+     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 4)},
+    {'name': 'rl_mountaincar',
+     'env_name': 'MountainCar-v0',
+     'variables': 2,
+     'output_transform': lambda x: 0 if x < -1 else 2 if x > 1 else 1,
+     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
+    {'name': 'rl_acrobot',
+     'env_name': 'Acrobot-v1',
+     'variables': 6,
+     'output_transform': lambda x: -1 if x < -1 else 1 if x > 1 else 0,
+     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 6)},
+    {'name': 'rl_acrobot',
+     'env_name': 'Pendulum-v1',
+     'variables': 3,
+     'output_transform': lambda x: [x],
+     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 3)},
+    {'name': 'rl_mountaincarcontinuous',
+     'env_name': 'MountainCarContinuous-v0',
+     'variables': 2,
+     'output_transform': lambda x: [min(max(x, -1), 1)],
+     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
 ]
 
 version_info = json.load(open('version.json', 'r'))
@@ -41,7 +67,7 @@ parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', ac
 args = parser.parse_args()
 
 bench_number = args.problem_number
-bench_number = 2
+bench_number = 9
 
 # get the primitive set for the selected benchmark
 pset = benchmark_description[bench_number]['pset']
@@ -67,6 +93,21 @@ def eval_symb_reg(individual, points, values):
         except OverflowError:
             return 1000.0,
 
+def eval_rl(individual, environment: gym.Env, output_transform):
+    try:
+        func = toolbox.compile(expr=individual)
+        obs = environment.reset()
+        done = False
+        R = 0
+        while not done:
+            obs = list(obs)
+            action = output_transform(func(*obs))
+            obs, r, done, _ = environment.step(action)
+            R += r
+        return -R,
+    except OverflowError:
+        return 1000.0,
+
 # register the selection and genetic operators - tournament selection and, one point crossover and sub-tree mutation
 toolbox.register("select", tools.selTournament, tournsize=3)
 toolbox.register("mate", gp.cxOnePoint)
@@ -78,12 +119,11 @@ toolbox.decorate("mate", gp.staticLimit(key=operator.attrgetter("height"), max_v
 toolbox.decorate("mutate", gp.staticLimit(key=operator.attrgetter("height"), max_value=17))
 
 
-def run_baseline(i, x, y):
+def run_baseline(i, bench):
     """ Executes one run of the baseline algorithm
 
     :param i: number of the run
-    :param x: the values for the training instances
-    :param y: the targets for the training instances
+    :bench: benchmark description
     :return: population in the last generation, log of the run, and the hall-of-fame,
     """
 
@@ -91,8 +131,16 @@ def run_baseline(i, x, y):
     random.seed(i)
     np.random.seed(i)
 
-    # register fitness function with the right x and y
-    toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
+    # initialize fitness for benchmark
+    if bench['name'].startswith('rl_'):
+        env = gym.make(bench['env_name'])
+        toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
+    else:
+        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')
+        y = data['y'].values
+        data = data.drop('y', axis=1)
+        x = data.values
+        toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
 
     # create population
     pop = toolbox.population(n=200)
@@ -114,12 +162,11 @@ def run_baseline(i, x, y):
     return pop, log, hof
 
 
-def run_model_test(i, x, y):
+def run_model_test(i, bench):
     """ Executes one run of the model tests
 
     :param i: number of the run
-    :param x: the values for the training instances
-    :param y: the targets for the training instances
+    :bench: the benchmark description
     :return: population in the last generation, log of the run, and the hall-of-fame,
     """
 
@@ -127,8 +174,16 @@ def run_model_test(i, x, y):
     random.seed(i)
     np.random.seed(i)
 
-    # register fitness function with the right x and y
-    toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
+    # initialize fitness for benchmark
+    if bench['name'].startswith('rl_'):
+        env = gym.make(bench['env_name'])
+        toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
+    else:
+        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')
+        y = data['y'].values
+        data = data.drop('y', axis=1)
+        x = data.values
+        toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
 
     # create population
     pop = toolbox.population(n=200)
@@ -152,7 +207,7 @@ def run_model_test(i, x, y):
 
     return pop, log, hof, feat_imp
 
-def run_surrogate(i, x, y):
+def run_surrogate(i, bench):
     """ Executes one run of the surrogate algorithm
 
     :param i: number of the run
@@ -165,8 +220,16 @@ def run_surrogate(i, x, y):
     random.seed(i)
     np.random.seed(i)
 
-    # register fitness with the correct x and y
-    toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
+    # initialize fitness for benchmark
+    if bench['name'].startswith('rl_'):
+        env = gym.make(bench['env_name'])
+        toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
+    else:
+        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')
+        y = data['y'].values
+        data = data.drop('y', axis=1)
+        x = data.values
+        toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
 
     # create the initial population
     pop = toolbox.population(n=200)
@@ -199,14 +262,8 @@ def run_all_baseline():
 
     # run the 15 runs
     for i in range(25):
-        # read data for this run
-        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=b_name, num=i+1), sep=';')
-        y = data['y'].values
-        data = data.drop('y', axis=1)
-        x = data.values
-
         # start the baseline algorithm
-        pop, log, hof = run_baseline(i, x, y)
+        pop, log, hof = run_baseline(i, benchmark_description[bench_number])
         # append the min fitness from this run to the log
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
                           name='run_' + str(i))
@@ -227,14 +284,9 @@ def run_all_surrogate():
 
     # make the 15 runs
     for i in range(25):
-        # read training data for this run
-        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=b_name, num=i+1), sep=';')
-        y = data['y'].values
-        data = data.drop('y', axis=1)
-        x = data.values
-
+        
         # start the surrogate algorithm
-        pop, log, hof = run_surrogate(i, x, y)
+        pop, log, hof = run_surrogate(i, benchmark_description[bench_number])
         # concat the log from this run to the logs
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
                           name='run_' + str(i))
@@ -253,14 +305,9 @@ def run_all_model_tests():
 
     # run the 15 runs
     for i in range(25):
-        # read data for this run
-        data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=b_name, num=i+1), sep=';')
-        y = data['y'].values
-        data = data.drop('y', axis=1)
-        x = data.values
-
+        
         # start the baseline algorithm
-        pop, log, hof, feat_imp = run_model_test(i, x, y)
+        pop, log, hof, feat_imp = run_model_test(i, benchmark_description[bench_number])
         # append the min fitness from this run to the log
         pdlog = pd.Series(log.select('spear'), index=np.cumsum(log.select('nevals')),
                           name='run_' + str(i))
@@ -272,8 +319,10 @@ def run_all_model_tests():
 
 
 def main():
-    run_all_model_tests()
-    #run_all_surrogate()
+    
+    #run_all_model_tests()
+    #run_all_baseline()
+    run_all_surrogate()
     #run the benchmark on the selected function
     # if args.use_surrogate:
     #     run_all_surrogate()
