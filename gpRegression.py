@@ -41,7 +41,16 @@ parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', ac
 args = parser.parse_args()
 
 bench_number = args.problem_number
-bench_number = 2
+bench_number = 0
+
+use_net = True
+if use_net:
+    surrogate_cls = surrogate.NeuralNetSurrogate
+    surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
+                        'n_epochs': 20, 'shuffle': False}
+else:
+    surrogate_cls = surrogate.FeatureSurrogate
+    surrogate_kwargs = {}
 
 # get the primitive set for the selected benchmark
 pset = benchmark_description[bench_number]['pset']
@@ -143,12 +152,10 @@ def run_model_test(i, x, y):
     mstats.register("min", np.min)
     mstats.register("max", np.max)
 
-    # surr_cls = None
-    surr_cls = surrogate.NeuralNetSurrogate
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
-                                       surrogate_cls=None)#surr_cls)
+                                       surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof, feat_imp
 
@@ -184,7 +191,7 @@ def run_surrogate(i, x, y):
     # run the surrogate algorithm
     pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, 15000, pset=pset,
                                         stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
-                                        surrogate_cls=surrogate.NeuralNetSurrogate)
+                                        surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof
 

@@ -34,15 +34,28 @@ def node_features(node, template):
     return vec
 
 
-def compile_tree(individual, feature_template):
+def compile_tree(individual, feature_template, use_root=False, use_global_node=False):
+    assert not (use_root and use_global_node), "Only one of use_root and use_global_node can be used."
     n_nodes = len(individual)
-    x_features = np.zeros((n_nodes, len(feature_template) + 2))
+    n_nodes = (n_nodes + 1) if use_global_node else n_nodes
+    n_feats = len(feature_template) + 2
+    n_feats = (n_feats + 1) if use_root or use_global_node else n_feats
+
+    x_features = np.zeros((n_nodes, n_feats))
     adjacency = np.zeros((n_nodes, n_nodes))
     stack = []
 
     for i, node in enumerate(reversed(individual)):
         features = node_features(node, feature_template)
+        if use_root:
+            features.append(1 if (i == len(individual) - 1) else 0)
+
+        if use_global_node:
+            features.append(0)
+
         x_features[i] = features
+        adjacency[i, -1] = 1
+        adjacency[-1, i] = 1
 
         if node.arity > 0:
             children = stack[-node.arity:]
@@ -55,6 +68,8 @@ def compile_tree(individual, feature_template):
         stack.append(i)
     #for i in range(n_nodes):
     #    adjacency[i, i] = 1
+    if use_global_node:
+        x_features[-1, -1] = 1
 
     assert len(stack) == 1, "Invalid tree"
 

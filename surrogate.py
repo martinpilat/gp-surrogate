@@ -8,6 +8,7 @@ import pandas as pd
 import statistics
 import numpy as np
 from sklearn import pipeline, ensemble, impute
+from torch_geometric.transforms import GCNNorm
 
 from gnn.model import GINModel, to_dataset, train
 from gnn.graph import gen_feature_vec_template, compile_tree
@@ -120,13 +121,14 @@ class FeatureSurrogate(SurrogateBase):
 
 class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
-                 n_epochs=200, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False):
+                 n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
+                 use_root=False, use_global_node=False, gcn_transform=False):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
 
         if model is None:
-            model = GINModel(len(self.feature_template) + 2)
+            model = GINModel(len(self.feature_template) + 2, use_root=use_root or use_global_node)
 
         self.model = model
 
@@ -138,21 +140,28 @@ class NeuralNetSurrogate(SurrogateBase):
         self.criterion = loss
         self.verbose = verbose
 
+        self.use_root = use_root
+        self.use_global_node = use_global_node
+        self.transform = None if not gcn_transform else GCNNorm()
+
     def fit(self, inds, fitness, first_gen=False):
-        inds = [compile_tree(ind, self.feature_template) for ind in inds]
+        inds = [compile_tree(ind, self.feature_template,
+                             use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
         dataset = to_dataset(inds, y_accuracies=fitness, batch_size=self.batch_size, shuffle=self.shuffle)
 
         train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-              verbose=self.verbose)
+              verbose=self.verbose, transform=self.transform)
 
         return self
 
     def predict(self, inds):
-        inds = [compile_tree(ind, self.feature_template) for ind in inds]
+        inds = [compile_tree(ind, self.feature_template,
+                             use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
         dataset = to_dataset(inds, batch_size=self.batch_size, shuffle=self.shuffle)
 
         res = []
         for batch in dataset:
+            batch = self.transform(batch) if self.transform is not None else batch
             pred = self.model(batch.x, batch.edge_index, batch.batch)
             res.append(pred.detach().cpu().numpy())
 

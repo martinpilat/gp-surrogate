@@ -20,7 +20,8 @@ def add_features(ind, pset):
 
 
 def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
-                        stats=None, halloffame=None, verbose=__debug__, n_jobs=-1, surrogate_cls=None):
+                        stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
+                        surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -37,6 +38,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
     """
     if surrogate_cls is None:
         surrogate_cls = surrogate.FeatureSurrogate
+    if surrogate_kwargs is None:
+        surrogate_kwargs = {}
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
@@ -84,7 +87,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
 
                 # build the surrogate model (random forest regressor)
-                clf = surrogate_cls(pset, n_jobs=n_jobs)
+                clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
                 clf.fit(features, targets)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
@@ -203,7 +206,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
 
 
 def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
-                       halloffame=None, verbose=__debug__, n_jobs=1, surrogate_cls=None):
+                       halloffame=None, verbose=__debug__, n_jobs=1, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the tests of the model
 
     :param population: the initial population
@@ -219,7 +222,8 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
     """
     if surrogate_cls is None:
         surrogate_cls = surrogate.FeatureSurrogate
-    #clf = surrogate_cls(pset, n_jobs=n_jobs)
+    if surrogate_kwargs is None:
+        surrogate_kwargs = {}
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
@@ -255,15 +259,15 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
             offspring = varAnd(offspring, toolbox, cxpb, mutpb)
 
             train = archive
-            #if len(train) > 5000:
-                #train = random.sample(archive, 5000)
+            if len(train) > 5000:
+                train = random.sample(archive, 5000)
 
             features = [ind for ind in train if ind.fitness.values[0] < 1000]
             targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
 
             # build the surrogate model (random forest regressor)
 
-            clf = surrogate_cls(pset, n_jobs=n_jobs)
+            clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')), ('scale', preprocessing.StandardScaler()), ('svm', svm.SVR())])
 
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')),
