@@ -41,6 +41,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
     if surrogate_kwargs is None:
         surrogate_kwargs = {}
 
+    print(surrogate_cls)
+
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
         logbook.header = ['gen', 'nevals', 'tot_evals'] + (stats.fields if stats else [])
@@ -88,7 +90,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
                 # build the surrogate model (random forest regressor)
                 clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
-                clf.fit(features, targets)
+                clf.fit(features, targets, first_gen=gen == 1)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring if not ind.fitness.valid]
@@ -225,6 +227,8 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
     if surrogate_kwargs is None:
         surrogate_kwargs = {}
 
+    print(surrogate_cls)
+
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
         logbook.header = ['gen', 'nevals', 'spear'] + (stats.fields if stats else [])
@@ -272,7 +276,7 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
 
             # clf = pipeline.Pipeline([('impute', preprocessing.Imputer(strategy='median')),
             #                          ('model', ensemble.RandomForestRegressor(n_estimators=100, max_depth=14, n_jobs=n_jobs))])
-            clf.fit(features, targets)
+            clf.fit(features, targets, first_gen=gen == 1)
 
             preds = clf.predict(features)
             score = sklearn.metrics.mean_squared_error(preds, targets)

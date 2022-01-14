@@ -67,16 +67,7 @@ parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', ac
 args = parser.parse_args()
 
 bench_number = args.problem_number
-
-use_net = True
-if use_net:
-    surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False}
-else:
-    surrogate_cls = surrogate.FeatureSurrogate
-    surrogate_kwargs = {}
-bench_number = 9
+bench_number = 0
 
 # get the primitive set for the selected benchmark
 pset = benchmark_description[bench_number]['pset']
@@ -92,6 +83,19 @@ toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.ex
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 toolbox.register("compile", gp.compile, pset=pset)
 
+# get number of features
+sample_ind = toolbox.individual()
+n_features = surrogate.extract_features(sample_ind, pset)
+n_features = n_features.shape[1]
+
+use_net = True
+if use_net:
+    surrogate_cls = surrogate.NeuralNetSurrogate
+    surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
+                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features}
+else:
+    surrogate_cls = surrogate.FeatureSurrogate
+    surrogate_kwargs = {}
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -327,9 +331,9 @@ def run_all_model_tests():
 
 def main():
     
-    #run_all_model_tests()
+    run_all_model_tests()
     #run_all_baseline()
-    run_all_surrogate()
+    #run_all_surrogate()
     #run the benchmark on the selected function
     # if args.use_surrogate:
     #     run_all_surrogate()

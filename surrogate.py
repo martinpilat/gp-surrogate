@@ -122,13 +122,15 @@ class FeatureSurrogate(SurrogateBase):
 class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
-                 use_root=False, use_global_node=False, gcn_transform=False):
+                 use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
 
         if model is None:
-            model = GINModel(len(self.feature_template) + 2, use_root=use_root or use_global_node)
+            n_features = None if not include_features else n_features
+            model = GINModel(len(self.feature_template) + 2,
+                             use_root=use_root or use_global_node, n_features=n_features)
 
         self.model = model
 
@@ -142,12 +144,30 @@ class NeuralNetSurrogate(SurrogateBase):
 
         self.use_root = use_root
         self.use_global_node = use_global_node
+        self.include_features = include_features
         self.transform = None if not gcn_transform else GCNNorm()
 
-    def fit(self, inds, fitness, first_gen=False):
+    def _get_features(self, inds, first_gen=False):
+        feats = np.vstack([ind.features.to_numpy() for ind in inds])
+        fill_val = 0.0 if first_gen else np.nanmedian(feats, axis=0)
+        feats = np.nan_to_num(feats, nan=fill_val, copy=False)
+
+        if np.isnan(feats).any():
+            feats = np.nan_to_num(feats, nan=0.0, copy=False)
+
+        return [torch.Tensor(f[np.newaxis]) for f in feats]
+
+    def _create_dataset(self, inds, fitness=None, first_gen=False):
+        feats = self._get_features(inds, first_gen=first_gen) if self.include_features else None
         inds = [compile_tree(ind, self.feature_template,
                              use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
-        dataset = to_dataset(inds, y_accuracies=fitness, batch_size=self.batch_size, shuffle=self.shuffle)
+
+        dataset = to_dataset(inds, y_accuracies=fitness, x_features=feats,
+                             batch_size=self.batch_size, shuffle=self.shuffle)
+        return dataset
+
+    def fit(self, inds, fitness, first_gen=False):
+        dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
 
         train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
               verbose=self.verbose, transform=self.transform)
@@ -155,14 +175,14 @@ class NeuralNetSurrogate(SurrogateBase):
         return self
 
     def predict(self, inds):
-        inds = [compile_tree(ind, self.feature_template,
-                             use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
-        dataset = to_dataset(inds, batch_size=self.batch_size, shuffle=self.shuffle)
+        dataset = self._create_dataset(inds)
 
         res = []
         for batch in dataset:
             batch = self.transform(batch) if self.transform is not None else batch
-            pred = self.model(batch.x, batch.edge_index, batch.batch)
+            features = batch.features if 'features' in batch else None
+
+            pred = self.model(batch.x, batch.edge_index, batch.batch, features=features)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)
