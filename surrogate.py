@@ -122,7 +122,8 @@ class FeatureSurrogate(SurrogateBase):
 class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
-                 use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None):
+                 use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None,
+                 **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
@@ -130,7 +131,7 @@ class NeuralNetSurrogate(SurrogateBase):
         if model is None:
             n_features = None if not include_features else n_features
             model = GINModel(len(self.feature_template) + 2,
-                             use_root=use_root or use_global_node, n_features=n_features)
+                             use_root=use_root or use_global_node, n_features=n_features, **kwargs)
 
         self.model = model
 
