@@ -1,3 +1,4 @@
+from distutils import log
 from deap import tools, base, creator, gp
 import pandas as pd
 import operator
@@ -12,6 +13,21 @@ import gym
 
 # decription of the benchmarks
 import surrogate
+
+def ot_cartpole(x):
+    return 1 if x > 0 else 0
+
+def ot_mountaincar(x):
+    return 0 if x < -1 else 2 if x > 1 else 1
+
+def ot_acrobot(x):
+    return -1 if x < -1 else 1 if x > 1 else 0
+
+def ot_pendulum(x):
+    return [x]
+
+def ot_mountaincarcont(x):
+    return [min(max(x, -1), 1)]
 
 benchmark_description = [
     {'name': 'keijzer-6',
@@ -32,27 +48,27 @@ benchmark_description = [
     {'name': 'rl_cartpole',
      'env_name': 'CartPole-v1',
      'variables': 4,
-     'output_transform': lambda x: 1 if x > 0 else 0,
+     'output_transform': ot_cartpole,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 4)},
     {'name': 'rl_mountaincar',
      'env_name': 'MountainCar-v0',
      'variables': 2,
-     'output_transform': lambda x: 0 if x < -1 else 2 if x > 1 else 1,
+     'output_transform': ot_mountaincar,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
     {'name': 'rl_acrobot',
      'env_name': 'Acrobot-v1',
      'variables': 6,
-     'output_transform': lambda x: -1 if x < -1 else 1 if x > 1 else 0,
+     'output_transform': ot_acrobot,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 6)},
-    {'name': 'rl_acrobot',
+    {'name': 'rl_pendulum',
      'env_name': 'Pendulum-v1',
      'variables': 3,
-     'output_transform': lambda x: [x],
+     'output_transform': ot_pendulum,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 3)},
     {'name': 'rl_mountaincarcontinuous',
      'env_name': 'MountainCarContinuous-v0',
      'variables': 2,
-     'output_transform': lambda x: [min(max(x, -1), 1)],
+     'output_transform': ot_mountaincarcont,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
 ]
 
@@ -64,10 +80,12 @@ version = version_info['version']
 parser = argparse.ArgumentParser(description='Run GP with surrogate model')
 parser.add_argument('--problem_number', '-P', type=int, help='The number of problem to start', default=0)
 parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', action='store_true')
+parser.add_argument('--use_net', '-N', help='Whether to use surrogate', action='store_true')
+parser.add_argument('--n_cpus', '-C', type=int, default=1)
 args = parser.parse_args()
 
 bench_number = args.problem_number
-bench_number = 0
+#bench_number = 0
 
 # get the primitive set for the selected benchmark
 pset = benchmark_description[bench_number]['pset']
@@ -88,12 +106,15 @@ sample_ind = toolbox.individual()
 n_features = surrogate.extract_features(sample_ind, pset)
 n_features = n_features.shape[1]
 
-use_net = True
+use_net = args.use_net
+surrogate_name = None
 if use_net:
+    surrogate_name = 'GNN'
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
                         'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features}
 else:
+    surrogate_name = 'RF'
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
 
@@ -106,7 +127,7 @@ def eval_symb_reg(individual, points, values):
         except OverflowError:
             return 1000.0,
 
-def eval_rl(individual, environment: gym.Env, output_transform):
+def eval_rl(individual, environment, output_transform):
     try:
         func = toolbox.compile(expr=individual)
         obs = environment.reset()
@@ -169,7 +190,7 @@ def run_baseline(i, bench):
     mstats.register("max", np.max)
 
     # run the baseline algorithm
-    pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, 200,
+    pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, 10000,
                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1)
 
     return pop, log, hof
@@ -256,55 +277,38 @@ def run_surrogate(i, bench):
     mstats.register("max", np.max)
 
     # run the surrogate algorithm
-    pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, 15000, pset=pset,
+    pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, 10000, pset=pset,
                                         stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
                                         surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof
 
 
-def run_all_baseline():
-    """ Wrapper to start 25 runs of the baseline algorithm and store the results
+def run_all(fn, log_prefix, repeats=25):
+    """ Wrapper to start 25 runs of the algorithm and store the results
     """
+    import multiprocessing
+    import functools
+
+    pool = multiprocessing.Pool(args.n_cpus)
     pdlogs = pd.DataFrame()
 
     # get the name of the benchmark
     b_name = benchmark_description[bench_number]['name']
 
-    # run the 15 runs
-    for i in range(25):
-        # start the baseline algorithm
-        pop, log, hof = run_baseline(i, benchmark_description[bench_number])
-        # append the min fitness from this run to the log
+    runner = functools.partial(fn, bench=benchmark_description[bench_number])
+
+    # run the 25 runs
+    logs = pool.map(runner, range(25))
+    for i, l in enumerate(logs):
+        _, log, _ = l
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
                           name='run_' + str(i))
         pdlogs = pd.concat([pdlogs, pdlog], axis=1)
 
     # store the logs
-    pdlogs.to_csv('output/baseline.{bname}.v{version}.csv'.format(bname=b_name, version=version))
+    pdlogs.to_csv(f'output/{log_prefix}.{b_name}.v{version}.csv')
 
-
-def run_all_surrogate():
-    """ Wrapper to start 25 runs of the surrogate algorithm and store the results
-    """
-
-    pdlogs = pd.DataFrame()
-
-    # get the name of the benchmark
-    b_name = benchmark_description[bench_number]['name']
-
-    # make the 15 runs
-    for i in range(25):
-        
-        # start the surrogate algorithm
-        pop, log, hof = run_surrogate(i, benchmark_description[bench_number])
-        # concat the log from this run to the logs
-        pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
-                          name='run_' + str(i))
-        pdlogs = pd.concat([pdlogs, pdlog], axis=1)
-
-    # store the logs
-    pdlogs.to_csv('output/surrogate.{bname}.v{version}.csv'.format(bname=b_name, version=version))
 
 def run_all_model_tests():
     """ Wrapper to start 25 runs of the model testing (Spearman corellation and feature imporatences)
@@ -331,14 +335,14 @@ def run_all_model_tests():
 
 def main():
     
-    run_all_model_tests()
+    #run_all_model_tests()
     #run_all_baseline()
     #run_all_surrogate()
     #run the benchmark on the selected function
-    # if args.use_surrogate:
-    #     run_all_surrogate()
-    # else:
-    #     run_all_baseline()
+    if args.use_surrogate:
+        run_all(fn=run_surrogate, log_prefix='surrogate.' + surrogate_name, repeats=25)
+    else:
+        run_all(fn=run_baseline, log_prefix='baseline', repeats=25)
 
 if __name__ == "__main__":
     main()

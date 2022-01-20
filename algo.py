@@ -144,7 +144,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
     return population, logbook
 
 
-def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
+def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
                        halloffame=None, verbose=__debug__, n_jobs=1):
     """ Performs the baseline version of the ea
 
@@ -170,6 +170,8 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
+        n_evals = len(invalid_ind)
+
         if halloffame is not None:
             halloffame.update(population)
 
@@ -179,7 +181,8 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
             print(logbook.stream)
 
         # Begin the generational process
-        for gen in range(1, ngen + 1):
+        gen = 1
+        while n_evals < max_evals:
             # Select the next generation individuals
             offspring = toolbox.select(population, len(population))
 
@@ -190,6 +193,8 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
             fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+
+            n_evals += len(invalid_ind)
 
             # Update the hall of fame with the generated individuals
             if halloffame is not None:
@@ -203,6 +208,8 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, ngen, stats=None,
             logbook.record(gen=gen, nevals=len(invalid_ind), **record)
             if verbose:
                 print(logbook.stream)
+            
+            gen += 1
 
         return population, logbook
 
