@@ -1,10 +1,11 @@
 import numpy as np
 import torch
 from torch_geometric.utils import dense_to_sparse
+import deap
 
 
 def gen_feature_vec_template(pset):
-    prim_list = pset.primitives[object]
+    prim_list = sum([v for v in pset.primitives.values()], [])
     args = pset.arguments
 
     possible = [p.name for p in prim_list]

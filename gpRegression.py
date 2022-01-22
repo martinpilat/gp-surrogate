@@ -137,7 +137,7 @@ def eval_rl(individual, environment, output_transform):
             obs = list(obs)
             action = output_transform(func(*obs))
             obs, r, done, _ = environment.step(action)
-            R += r
+            R += float(r)
         return -R,
     except OverflowError:
         return 1000.0,
