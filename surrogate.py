@@ -9,10 +9,15 @@ import statistics
 import numpy as np
 from sklearn import pipeline, ensemble, impute
 from torch_geometric.transforms import GCNNorm
+from torch.utils.data import DataLoader
 
 from gnn.model import GINModel, to_dataset, train
 from gnn.graph import gen_feature_vec_template, compile_tree
 
+import tree_nn.model
+import tree_nn.tnn_utils
+
+import treelstm
 
 def extract_features(ind: gp.PrimitiveTree, pset: gp.PrimitiveSetTyped):
     """ Extracts the features from the individual
@@ -184,6 +189,78 @@ class NeuralNetSurrogate(SurrogateBase):
             features = batch.features if 'features' in batch else None
 
             pred = self.model(batch.x, batch.edge_index, batch.batch, features=features)
+            res.append(pred.detach().cpu().numpy())
+
+        return np.hstack(res)
+
+class TreeLSTMSurrogate(SurrogateBase):
+
+    def __init__(self, pset, n_jobs=1,  model=None,
+                 n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
+                 use_root=False, use_global_node=False, include_features=False, n_features=None,
+                 **kwargs):
+
+        self.feature_template = gen_feature_vec_template(pset)
+
+        if model is None:
+            n_features = None if not include_features else n_features
+            model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, n_features=n_features, **kwargs)
+
+        self.pset = pset
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.optimizer = optimizer
+        self.criterion = loss
+        self.verbose = verbose
+        self.use_root = use_root
+        self.include_features = include_features
+        self.n_features = n_features
+        self.use_global_node = use_global_node
+        self.model = model
+        self.n_jobs = n_jobs
+
+    def _collate_fn(self, x):
+        data = {}
+        data['x'] = treelstm.batch_tree_input([d['x'] for d in x])
+        data['y'] = torch.tensor([d['y'] for d in x])
+        data['features'] = torch.vstack([d['features'] for d in x])
+        return data
+
+    def _get_features(self, inds, first_gen=False):
+        feats = np.vstack([ind.features.to_numpy() for ind in inds])
+        fill_val = 0.0 if first_gen else np.nanmedian(feats, axis=0)
+        feats = np.nan_to_num(feats, nan=fill_val, copy=False)
+
+        if np.isnan(feats).any():
+            feats = np.nan_to_num(feats, nan=0.0, copy=False)
+
+        return [torch.Tensor(f[np.newaxis]) for f in feats]
+    
+    def _create_dataset(self, inds, fitness=None, first_gen=False):
+        feats = self._get_features(inds, first_gen=first_gen) if self.include_features else [torch.tensor([0])]*len(inds)
+        fitness = fitness or [0]*len(inds)
+        data = [{'x' : tree_nn.tnn_utils.convert_tree_to_tensors(tree_nn.tnn_utils.ind_to_tree(ind, self.feature_template)[0]), 
+                 'y' : fit,
+                 'features': features}
+                    for ind, fit, features in zip(inds, fitness, feats)]
+        return DataLoader(data, collate_fn=self._collate_fn, batch_size=self.batch_size)
+
+    def fit(self, inds, fitness, first_gen=False):
+        dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
+        self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
+        tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
+              verbose=True)
+        return self
+
+    def predict(self, inds):
+        dataset = self._create_dataset(inds)
+
+        res = []
+        for batch in dataset:
+            features = batch['features'] if 'features' in batch else None
+
+            pred = self.model(batch['x'], features=features)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)

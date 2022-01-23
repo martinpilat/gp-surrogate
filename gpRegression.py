@@ -80,9 +80,12 @@ version = version_info['version']
 parser = argparse.ArgumentParser(description='Run GP with surrogate model')
 parser.add_argument('--problem_number', '-P', type=int, help='The number of problem to start', default=0)
 parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', action='store_true')
-parser.add_argument('--use_net', '-N', help='Whether to use surrogate', action='store_true')
+parser.add_argument('--use_net', '-N', help='Whether to GNN surrogate', action='store_true')
+parser.add_argument('--use_tree', '-T', help='Whether to use TreeLSTM surrogate', action='store_true')
 parser.add_argument('--n_cpus', '-C', type=int, default=1)
 args = parser.parse_args()
+
+assert not args.use_tree or not args.use_net, "Only one type of NN can be specified"
 
 bench_number = args.problem_number
 #bench_number = 0
@@ -107,12 +110,18 @@ n_features = surrogate.extract_features(sample_ind, pset)
 n_features = n_features.shape[1]
 
 use_net = args.use_net
+use_tree = args.use_tree
 surrogate_name = None
 if use_net:
     surrogate_name = 'GNN'
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
                         'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features}
+elif use_tree:
+    surrogate_name = 'TNN'
+    surrogate_cls = surrogate.TreeLSTMSurrogate
+    surrogate_kwargs = {'use_root': False, 'use_global_node': True,
+                        'n_epochs': 20, 'shuffle': False, 'include_features': True, 'n_features': n_features}
 else:
     surrogate_name = 'RF'
     surrogate_cls = surrogate.FeatureSurrogate
@@ -299,7 +308,7 @@ def run_all(fn, log_prefix, repeats=25):
     runner = functools.partial(fn, bench=benchmark_description[bench_number])
 
     # run the 25 runs
-    logs = pool.map(runner, range(25))
+    logs = pool.map(runner, range(repeats))
     for i, l in enumerate(logs):
         _, log, _ = l
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
