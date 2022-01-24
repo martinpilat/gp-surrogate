@@ -116,7 +116,8 @@ if use_net:
     surrogate_name = 'GNN'
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features}
+                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
+                        'ranking': True, 'mse_both': True}
 elif use_tree:
     surrogate_name = 'TNN'
     surrogate_cls = surrogate.TreeLSTMSurrogate

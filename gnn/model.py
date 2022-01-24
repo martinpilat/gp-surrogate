@@ -18,21 +18,36 @@ def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, sh
 
 
 def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-          transform=None):
+          transform=None, ranking=False, mse_both=False):
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
+
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
+    ranking_criterion = torch.nn.MarginRankingLoss()
 
     epoch_losses = []
     for e in range(n_epochs):
         model.train()
         batch_losses = []
 
+        prev = None
         for data in train_loader:
             data = data if transform is None else transform(data)
             features = data.features if 'features' in data else None
 
+            if ranking:
+                prev = (data, features)
+
             out = model(data.x, data.edge_index, data.batch, features=features)  # Perform a single forward pass.
             loss = criterion(out, data.y)
+            if ranking and prev is not None and len(prev[0].y) == len(data.y):
+                data_prev, feats_prev = prev
+                out_prev = model(data_prev.x, data_prev.edge_index, data_prev.batch, features=feats_prev)
+
+                y = torch.where(data.y > data_prev.y, 1, -1)
+                loss += ranking_criterion(out, out_prev, y)
+                if mse_both:
+                    loss += criterion(out_prev, data_prev.y)
+
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()

@@ -128,7 +128,7 @@ class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None,
-                 **kwargs):
+                 ranking=False, mse_both=False, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
@@ -143,6 +143,8 @@ class NeuralNetSurrogate(SurrogateBase):
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.use_ranking_loss = ranking
+        self.mse_both = mse_both
 
         self.optimizer = optimizer
         self.criterion = loss
@@ -176,7 +178,7 @@ class NeuralNetSurrogate(SurrogateBase):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
 
         train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-              verbose=self.verbose, transform=self.transform)
+              verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both)
 
         return self
 
