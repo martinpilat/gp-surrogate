@@ -252,7 +252,7 @@ class TreeLSTMSurrogate(SurrogateBase):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
         self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
         tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
-              verbose=True)
+              verbose=False)
         return self
 
     def predict(self, inds):

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import treelstm
 import numpy as np
 
-def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
+def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=False,
           transform=None):
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
@@ -19,11 +19,11 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
             features = data['features'] if 'features' in data else None
             
             out = model(data['x'], features=features)  # Perform a single forward pass.
-            c1 = torch.combinations(data['y'])
-            c2 = torch.combinations(out)
-            c1 = c1[:, 0] - c1[:, 1]
-            c2 = c2[:, 0] - c2[:, 1]
-            loss = criterion(c1, c2)
+            # c1 = torch.combinations(data['y'])
+            # c2 = torch.combinations(out)
+            # c1 = c1[:, 0] - c1[:, 1]
+            # c2 = c2[:, 0] - c2[:, 1]
+            loss = criterion(data['y'], out)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -62,13 +62,16 @@ class TreeLSTMModel(torch.nn.Module):
         batch_info = x['tree_sizes']
         x, c = self.lstm(x['features'],x['node_order'],x['adjacency_list'],x['edge_order'])
         x = treelstm.util.unbatch_tree_tensor(x, batch_info)
-        x = torch.vstack([torch.mean(i, axis=0) for i in x])
+        if self.use_root:
+            x = torch.vstack([i[0] for i in x])
+        else:
+            x = torch.vstack([torch.mean(i, axis=0) for i in x])
         
         x = F.relu(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
 
         if self.concat_lin:
-            features = torch.tanh(features)
+            #features = torch.tanh(features)
             x = torch.concat([x, features], dim=-1)
             x = self.concat_lin(x)
             x = F.relu(x)

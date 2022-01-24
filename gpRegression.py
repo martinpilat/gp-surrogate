@@ -79,13 +79,20 @@ version = version_info['version']
 
 parser = argparse.ArgumentParser(description='Run GP with surrogate model')
 parser.add_argument('--problem_number', '-P', type=int, help='The number of problem to start', default=0)
-parser.add_argument('--use_surrogate', '-S', help='Whether to use surrogate', action='store_true')
-parser.add_argument('--use_net', '-N', help='Whether to GNN surrogate', action='store_true')
-parser.add_argument('--use_tree', '-T', help='Whether to use TreeLSTM surrogate', action='store_true')
+parser.add_argument('--use_surrogate', '-S', type=str, help='Which surrogate to use (RF, GNN, TNN)', default=None)
+parser.add_argument('--use_ranking', '-R', help='Whether to use ranking loss', action='store_true')
+parser.add_argument('--mse_both', '-B', help='Whether to use MSE from both batches with ranking', action='store_true')
 parser.add_argument('--n_cpus', '-C', type=int, default=1)
+parser.add_argument('--repeats', '-K', type=int, help='How many times to run the algorithm', default=25)
+parser.add_argument('--max_evals', '-E', type=int, help='Maximum number of fitness evaluations', default=10000)
 args = parser.parse_args()
 
-assert not args.use_tree or not args.use_net, "Only one type of NN can be specified"
+print(args.use_surrogate)
+
+if args.use_surrogate:
+    if args.use_surrogate not in ['RF', 'TNN', 'GNN']:
+        print('Surrogate type must be one of RF, TNN, or GNN')
+        parser.print_help()
 
 bench_number = args.problem_number
 #bench_number = 0
@@ -109,24 +116,26 @@ sample_ind = toolbox.individual()
 n_features = surrogate.extract_features(sample_ind, pset)
 n_features = n_features.shape[1]
 
-use_net = args.use_net
-use_tree = args.use_tree
-surrogate_name = None
-if use_net:
-    surrogate_name = 'GNN'
+surrogate_name = args.use_surrogate
+if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
                         'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
-                        'ranking': True, 'mse_both': True}
-elif use_tree:
-    surrogate_name = 'TNN'
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both}
+if surrogate_name == 'TNN':
     surrogate_cls = surrogate.TreeLSTMSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': True,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': True, 'n_features': n_features}
-else:
-    surrogate_name = 'RF'
+    surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
+                        'include_features': False, 'n_features': n_features}
+
+if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
+
+if args.use_ranking and surrogate_name in ['GNN']:
+    surrogate_name += '-R'
+
+if args.mse_both and surrogate_name in ['GNN']:
+    surrogate_name += '-B'
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -200,7 +209,7 @@ def run_baseline(i, bench):
     mstats.register("max", np.max)
 
     # run the baseline algorithm
-    pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, 10000,
+    pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, args.max_evals,
                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1)
 
     return pop, log, hof
@@ -287,7 +296,7 @@ def run_surrogate(i, bench):
     mstats.register("max", np.max)
 
     # run the surrogate algorithm
-    pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, 10000, pset=pset,
+    pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                         stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
                                         surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
@@ -350,9 +359,9 @@ def main():
     #run_all_surrogate()
     #run the benchmark on the selected function
     if args.use_surrogate:
-        run_all(fn=run_surrogate, log_prefix='surrogate.' + surrogate_name, repeats=25)
+        run_all(fn=run_surrogate, log_prefix='surrogate.' + surrogate_name, repeats=args.repeats)
     else:
-        run_all(fn=run_baseline, log_prefix='baseline', repeats=25)
+        run_all(fn=run_baseline, log_prefix='baseline', repeats=args.repeats)
 
 if __name__ == "__main__":
     main()

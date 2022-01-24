@@ -8,5 +8,5 @@ conda activate $USER_DIR/.conda/envs/gpsurrogate
 
 cd $GP_DIR
 cd gp-surrogate 
-python gpRegression.py -P $PROB_NUM -C 16 -S
+python gpRegression.py -P $PROB_NUM -C 16 -S $SURROGATE_NAME -K 16 -E 5000 $ADDITIONAL_OPTIONS
 

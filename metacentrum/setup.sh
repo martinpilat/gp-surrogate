@@ -17,3 +17,4 @@ pip install torch_geometric
 pip install torch_sparse
 pip install torch_scatter
 pip install gym
+pip install pytorch-tree-lstm
