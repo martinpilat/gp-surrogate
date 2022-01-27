@@ -85,6 +85,7 @@ parser.add_argument('--mse_both', '-B', help='Whether to use MSE from both batch
 parser.add_argument('--n_cpus', '-C', type=int, default=1)
 parser.add_argument('--repeats', '-K', type=int, help='How many times to run the algorithm', default=25)
 parser.add_argument('--max_evals', '-E', type=int, help='Maximum number of fitness evaluations', default=10000)
+parser.add_argument('--use_local_search', '-L', help='Use local search algorithm', action='store_true')
 args = parser.parse_args()
 
 print(args.use_surrogate)
@@ -125,17 +126,21 @@ if surrogate_name == 'GNN':
 if surrogate_name == 'TNN':
     surrogate_cls = surrogate.TreeLSTMSurrogate
     surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
-                        'include_features': False, 'n_features': n_features}
+                        'include_features': False, 'n_features': n_features,
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both}
 
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
 
-if args.use_ranking and surrogate_name in ['GNN']:
-    surrogate_name += '-R'
+if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
+    surrogate_name += '-R1'
 
-if args.mse_both and surrogate_name in ['GNN']:
-    surrogate_name += '-B'
+    if args.mse_both:
+        surrogate_name += '-B'
+
+if args.use_local_search:
+    surrogate_name += '-LS'
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -296,9 +301,14 @@ def run_surrogate(i, bench):
     mstats.register("max", np.max)
 
     # run the surrogate algorithm
-    pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
+    if args.use_local_search :
+        pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                         stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
                                         surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+    else: 
+        pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
+                                            stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
+                                            surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof
 
@@ -359,7 +369,8 @@ def main():
     #run_all_surrogate()
     #run the benchmark on the selected function
     if args.use_surrogate:
-        run_all(fn=run_surrogate, log_prefix='surrogate.' + surrogate_name, repeats=args.repeats)
+        prefix = 'surrogate.' if not args.use_local_search else 'surrogate-ls.'
+        run_all(fn=run_surrogate, log_prefix=prefix + surrogate_name, repeats=args.repeats)
     else:
         run_all(fn=run_baseline, log_prefix='baseline', repeats=args.repeats)
 

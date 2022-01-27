@@ -34,9 +34,6 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
             data = data if transform is None else transform(data)
             features = data.features if 'features' in data else None
 
-            if ranking:
-                prev = (data, features)
-
             out = model(data.x, data.edge_index, data.batch, features=features)  # Perform a single forward pass.
             loss = criterion(out, data.y)
             if ranking and prev is not None and len(prev[0].y) == len(data.y):
@@ -51,6 +48,9 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+
+            if ranking:
+                prev = (data, features)
 
             batch_losses.append(loss.detach().cpu().numpy())
 

@@ -200,7 +200,7 @@ class TreeLSTMSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1,  model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, include_features=False, n_features=None,
-                 **kwargs):
+                 ranking=False, mse_both=False, **kwargs):
 
         self.feature_template = gen_feature_vec_template(pset)
 
@@ -221,6 +221,8 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.use_global_node = use_global_node
         self.model = model
         self.n_jobs = n_jobs
+        self.ranking = ranking
+        self.mse_both = mse_both
 
     def _collate_fn(self, x):
         data = {}
@@ -252,7 +254,7 @@ class TreeLSTMSurrogate(SurrogateBase):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
         self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
         tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
-              verbose=False)
+              verbose=False, ranking=self.ranking, mse_both=self.mse_both)
         return self
 
     def predict(self, inds):

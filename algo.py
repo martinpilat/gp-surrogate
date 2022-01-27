@@ -1,3 +1,4 @@
+import sys
 import sklearn.metrics
 from deap import tools
 import random
@@ -17,6 +18,159 @@ def add_features(ind, pset):
     """
     ind.features = surrogate.extract_features(ind, pset)
     return ind
+
+def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
+                        stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
+                        surrogate_cls=None, surrogate_kwargs=None):
+    """ Performs the surrogate version of the ea
+
+    :param population: the initial population
+    :param toolbox: the toolbox to use
+    :param cxpb: probability of crossover
+    :param mutpb: probability of muatation
+    :param max_evals: maximum number of fitness evaluations
+    :param pset: the primitive set
+    :param stats: the stats object to compute and save stats
+    :param halloffame: the hall of fame
+    :param verbose: verobosity level (whether to print the log or not)
+    :param n_jobs: the number of jobs use to train the surrogate model and to compute the fitness
+    :return: the final population and the log of the run
+    """
+    if surrogate_cls is None:
+        surrogate_cls = surrogate.FeatureSurrogate
+    if surrogate_kwargs is None:
+        surrogate_kwargs = {}
+
+    print(surrogate_cls)
+
+    with joblib.Parallel(n_jobs=n_jobs) as parallel:
+        logbook = tools.Logbook()
+        logbook.header = ['gen', 'nevals', 'tot_evals'] + (stats.fields if stats else [])
+
+        # Evaluate the individuals with an invalid fitness
+        invalid_ind = [ind for ind in population if not ind.fitness.valid]
+        fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+            ind.estimate = False
+            add_features(ind, pset)
+
+        # add the evaluated individuals into archive
+        archive = invalid_ind
+        n_evals = len(invalid_ind)
+        # update the hall of fame
+        if halloffame is not None:
+            halloffame.update(population)
+
+        # record the stats
+        record = stats.compile(population) if stats else {}
+        logbook.record(gen=0, nevals=len(invalid_ind), **record)
+        if verbose:
+            print(logbook.stream)
+
+        gen = 1
+        # Begin the generational process
+        while n_evals < max_evals:
+
+            # Select the next generation individuals
+            offspring = toolbox.select(population, len(population))
+
+            # Vary the pool of individuals
+            offspring = varAnd(offspring, toolbox, cxpb, mutpb)
+
+            in_evals = 0
+
+            if len(archive) > 1000:
+                
+                train = archive
+                if len(train) > 5000:
+                    train = random.sample(archive, 5000)
+
+                features = [ind for ind in train if ind.fitness.values[0] < 1000]
+                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
+
+                # build the surrogate model (random forest regressor)
+                clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
+                clf.fit(features, targets, first_gen=gen == 1)
+
+                in_par_ix = list(range(len(offspring)))
+                random.shuffle(in_par_ix)
+                in_par_ix = in_par_ix[:50]
+                in_par = [toolbox.clone(offspring[i]) for i in in_par_ix]
+
+                preds = clf.predict(in_par)
+                for o, f in zip(in_par, preds):
+                    o.fitness.values = (f,)
+
+                for _ in range(50):
+                    
+                    in_off = toolbox.select(in_par, len(in_par))
+                    in_off = varAnd(in_off, toolbox, cxpb, mutpb)
+                    preds = clf.predict(in_off)
+                    
+                    for o, f in zip(in_off, preds):
+                       o.fitness.values = (f,)
+                       o.estimate = True
+
+                    in_par[:] = tools.selBest(in_off, len(in_par) - 1) + tools.selBest(in_par, 1)
+
+                    # if verbose:
+                    #     best = tools.selBest(in_off, 1)
+                    #     print(best[0].fitness.values)
+
+                fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in in_par)
+                for ind, fit in zip(in_par, fitnesses):
+                    ind.fitness.values = fit
+                    ind.estimate = False
+                    add_features(ind, pset)
+
+                archive = archive+in_par
+
+                in_evals += len(in_par)
+
+                for i, o in zip(in_par_ix, in_par):
+                    offspring[i] = o
+                
+            # prepare the rest of the individuals for evaluation with the real fitness
+            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            # evaluate invalid individuals with the real fitness
+            fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
+            for ind, fit in zip(invalid_ind, fitnesses):
+                ind.fitness.values = fit
+                ind.estimate = False
+                add_features(ind, pset)
+
+            assert all(not ind.estimate for ind in offspring)
+
+            # add the evaluated individual into the archive
+            archive = archive+invalid_ind
+
+            # Update the hall of fame with the generated and evaluated individuals
+            if halloffame is not None:
+                halloffame.update(offspring)
+
+            # Replace the current population by the offspring
+
+            population[:] = tools.selBest(offspring, len(offspring) - 1) + tools.selBest(population, 1)
+
+            # Append the current generation statistics to the logbook
+            evaluated = [ind for ind in population if not ind.estimate]
+            record = stats.compile(evaluated) if stats else {}
+            if len(invalid_ind) > 0:
+                n_evals += len(invalid_ind) + in_evals
+                logbook.record(gen=gen, nevals=len(invalid_ind) + in_evals, tot_evals=n_evals, **record)
+            if verbose:
+                print(logbook.stream)
+                if gen%5 == 0:
+                    sys.stdout.flush()
+
+            gen += 1
+
+    if verbose:
+        sys.stdout.flush()
+    
+    return population, logbook
+
 
 
 def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
@@ -105,7 +259,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 sorted_ix = np.argsort(preds)
                 bad_ix = sorted_ix[-int(2*len(invalid_ind)/3):]
 
-                # set the fitness predicted by the model as fitness to bad individuals
+                # replace the bad individuals by their parents, effectively removing them from the population
                 for ind, ix in zip(invalid_ind, range(len(invalid_ix))):
                     if ix in bad_ix:
                         offspring[invalid_ix[ix]] = selected[invalid_ix[ix]]
@@ -138,8 +292,13 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 logbook.record(gen=gen, nevals=len(invalid_ind), tot_evals=n_evals, **record)
             if verbose:
                 print(logbook.stream)
+                if gen % 5 == 0:
+                    sys.stdout.flush()
 
             gen += 1
+
+    if verbose:
+        sys.stdout.flush()
 
     return population, logbook
 
