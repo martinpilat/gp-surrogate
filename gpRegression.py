@@ -29,6 +29,9 @@ def ot_pendulum(x):
 def ot_mountaincarcont(x):
     return [min(max(x, -1), 1)]
 
+def ot_lunarlander(x):
+    return list(x)
+
 benchmark_description = [
     {'name': 'keijzer-6',
      'variables': 1,
@@ -67,9 +70,16 @@ benchmark_description = [
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 3)},
     {'name': 'rl_mountaincarcontinuous',
      'env_name': 'MountainCarContinuous-v0',
+     'env_kwargs': {},
      'variables': 2,
      'output_transform': ot_mountaincarcont,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
+    {'name': 'rl_lunarlander',
+     'env_name': 'LunarLanderContinuous-v2',
+     'env_kwargs': {},
+     'variables': 8,
+     'output_transform': ot_lunarlander,
+     'pset': benchmarks.get_primitive_set_for_benchmark('lander', 8)} 
 ]
 
 version_info = json.load(open('version.json', 'r'))
@@ -191,7 +201,7 @@ def run_baseline(i, bench):
 
     # initialize fitness for benchmark
     if bench['name'].startswith('rl_'):
-        env = gym.make(bench['env_name'])
+        env = gym.make(bench['env_name'], **bench['env_kwargs'])
         toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
     else:
         data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')
@@ -234,7 +244,7 @@ def run_model_test(i, bench):
 
     # initialize fitness for benchmark
     if bench['name'].startswith('rl_'):
-        env = gym.make(bench['env_name'])
+        env = gym.make(bench['env_name'], **bench['env_kwargs'])
         toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
     else:
         data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')
@@ -278,7 +288,7 @@ def run_surrogate(i, bench):
 
     # initialize fitness for benchmark
     if bench['name'].startswith('rl_'):
-        env = gym.make(bench['env_name'])
+        env = gym.make(bench['env_name'], **bench['env_kwargs'])
         toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
     else:
         data = pd.read_csv('benchmarks/{bname}-train.{num}.csv'.format(bname=bench['name'], num=i+1), sep=';')

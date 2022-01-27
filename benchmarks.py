@@ -54,6 +54,11 @@ def tan(x):
     except  ValueError:
         return 0
 
+def concat(*args):
+    return tuple(args)
+
+class TupleOut:
+    pass
 
 def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
     """ Creates and returns the primitive sets for given benchmark based on its name
@@ -116,4 +121,17 @@ def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
         pset.addPrimitive(tan, 1)
         pset.addPrimitive(math.tanh, 1)
         pset.addEphemeralConstant('korns_const', lambda: random.uniform(-1e10, 1e10))
+        return pset
+
+    if benchmark_name.startswith('lander'):
+        pset = gp.PrimitiveSetTyped('MAIN', [float]*num_variables, TupleOut)
+        pset.addPrimitive(operator.add, [float, float], float)
+        pset.addPrimitive(operator.sub, [float, float], float)
+        pset.addPrimitive(operator.mul, [float, float], float)
+        pset.addPrimitive(safediv, [float, float], float)
+        pset.addPrimitive(math.exp, [float], float)
+        pset.addPrimitive(logabs, [float], float)
+        pset.addPrimitive(cos, [float], float)
+        pset.addPrimitive(sin, [float], float)
+        pset.addPrimitive(concat, [float, float], TupleOut)
         return pset
