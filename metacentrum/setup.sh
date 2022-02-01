@@ -19,4 +19,4 @@ pip install torch_scatter
 pip install gym
 pip install pytorch-tree-lstm
 conda install swig
-pip intall gym[box2d]
+pip install gym[box2d]

@@ -60,11 +60,13 @@ benchmark_description = [
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
     {'name': 'rl_acrobot',
      'env_name': 'Acrobot-v1',
+     'env_kwargs': {},
      'variables': 6,
      'output_transform': ot_acrobot,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 6)},
     {'name': 'rl_pendulum',
      'env_name': 'Pendulum-v1',
+     'env_kwargs': {},
      'variables': 3,
      'output_transform': ot_pendulum,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 3)},
@@ -164,17 +166,19 @@ def eval_symb_reg(individual, points, values):
 def eval_rl(individual, environment, output_transform):
     try:
         func = toolbox.compile(expr=individual)
-        obs = environment.reset()
-        done = False
         R = 0
-        while not done:
-            obs = list(obs)
-            action = output_transform(func(*obs))
-            obs, r, done, _ = environment.step(action)
-            R += float(r)
-        return -R,
+        for s in range(5):
+            environment.seed(s)
+            obs = environment.reset()
+            done = False
+            while not done:
+                obs = list(obs)
+                action = output_transform(func(*obs))
+                obs, r, done, _ = environment.step(action)
+                R += float(r)
+        return -R/5,
     except OverflowError:
-        return 1000.0,
+        return 100000.0,
 
 # register the selection and genetic operators - tournament selection and, one point crossover and sub-tree mutation
 toolbox.register("select", tools.selTournament, tournsize=3)
@@ -285,9 +289,12 @@ def run_surrogate(i, bench):
     # set seed to the number of the run
     random.seed(i)
     np.random.seed(i)
-
+    scale = False
+    train_fit_lim = 1000
     # initialize fitness for benchmark
     if bench['name'].startswith('rl_'):
+        scale = True
+        train_fit_lim = 100000
         env = gym.make(bench['env_name'], **bench['env_kwargs'])
         toolbox.register("evaluate", eval_rl, environment=env, output_transform=bench['output_transform'])
     else:
@@ -313,11 +320,13 @@ def run_surrogate(i, bench):
     # run the surrogate algorithm
     if args.use_local_search :
         pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
-                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
+                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
+                                        train_fit_lim=train_fit_lim,
                                         surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
     else: 
         pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
-                                            stats=mstats, halloffame=hof, verbose=True, n_jobs=1,
+                                            stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
+                                            train_fit_lim=train_fit_lim,
                                             surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof

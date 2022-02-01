@@ -5,6 +5,7 @@ import random
 import surrogate
 import pandas as pd
 from sklearn import ensemble, pipeline, impute, svm
+import math
 import numpy as np
 import joblib
 
@@ -21,7 +22,7 @@ def add_features(ind, pset):
 
 def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
-                        surrogate_cls=None, surrogate_kwargs=None):
+                        scale=False, train_fit_lim=1000, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -86,8 +87,13 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                 if len(train) > 5000:
                     train = random.sample(archive, 5000)
 
-                features = [ind for ind in train if ind.fitness.values[0] < 1000]
-                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
+                features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
+                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
+
+                if scale:
+                    a = min(targets)
+                    b = max(targets)
+                    targets = [math.log(1+(t-a)) for t in targets]
 
                 # build the surrogate model (random forest regressor)
                 clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
@@ -175,7 +181,7 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 
 def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
-                        surrogate_cls=None, surrogate_kwargs=None):
+                        scale=False, train_fit_lim=1000, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -239,8 +245,13 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 if len(train) > 5000:
                     train = random.sample(archive, 5000)
 
-                features = [ind for ind in train if ind.fitness.values[0] < 1000]
-                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < 1000]
+                features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
+                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
+
+                if scale:
+                    a = min(targets)
+                    b = max(targets)
+                    targets = [math.log(1+(t-a)) for t in targets]
 
                 # build the surrogate model (random forest regressor)
                 clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
