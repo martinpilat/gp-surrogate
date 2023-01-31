@@ -133,7 +133,7 @@ surrogate_name = args.use_surrogate
 if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'readout': 'concat', 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
-                        'include_features': False, 'n_features': n_features,
+                        'include_features': False, 'n_features': None,#n_features,
                         'ranking': args.use_ranking, 'mse_both': args.mse_both,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
