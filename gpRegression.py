@@ -1,18 +1,16 @@
-from distutils import log
 from deap import tools, base, creator, gp
 import pandas as pd
 import operator
 import math
 import random
 import numpy as np
-import benchmarks
-import algo
 import argparse
 import json
 import gym
 
 # decription of the benchmarks
-import surrogate
+from gp_surrogate import surrogate, benchmarks, algo
+
 
 def ot_cartpole(x):
     return 1 if x > 0 else 0
@@ -134,17 +132,9 @@ n_features = n_features.shape[1]
 surrogate_name = args.use_surrogate
 if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
+    surrogate_kwargs = {'readout': 'concat', 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
+                        'include_features': False, 'n_features': None,#n_features,
                         'ranking': args.use_ranking, 'mse_both': args.mse_both,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 1}
-if surrogate_name == 'GNNnew':
-    surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': False, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'new': True,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 1}
@@ -156,7 +146,6 @@ if surrogate_name == 'TNN':
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 1}
-
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
@@ -297,8 +286,8 @@ def run_model_test(i, bench):
 
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
-                                       surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
+                                                surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof, feat_imp
 
@@ -344,9 +333,9 @@ def run_surrogate(i, bench):
     # run the surrogate algorithm
     if args.use_local_search :
         pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
-                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
-                                        train_fit_lim=train_fit_lim,
-                                        surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                 stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
+                                                 train_fit_lim=train_fit_lim,
+                                                 surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
     else: 
         pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                             stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,

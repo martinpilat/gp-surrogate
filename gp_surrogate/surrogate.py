@@ -11,13 +11,14 @@ from sklearn import pipeline, ensemble, impute
 from torch_geometric.transforms import GCNNorm
 from torch.utils.data import DataLoader
 
-from gnn.model import GINModel, to_dataset, train, GINConcat
-from gnn.graph import gen_feature_vec_template, compile_tree
+from gp_surrogate.models.gnn.model import to_dataset, GINConcat, train_gnn
+from gp_surrogate.models.gnn.graph import gen_feature_vec_template, compile_tree
 
-import tree_nn.model
-import tree_nn.tnn_utils
+from gp_surrogate.models.tree_nn.tnn_utils import convert_tree_to_tensors, ind_to_tree
+from gp_surrogate.models.tree_nn.model import TreeLSTMModel, train_lstm
 
 import treelstm
+
 
 def extract_features(ind: gp.PrimitiveTree, pset: gp.PrimitiveSetTyped):
     """ Extracts the features from the individual
@@ -125,23 +126,17 @@ class FeatureSurrogate(SurrogateBase):
 
 
 class NeuralNetSurrogate(SurrogateBase):
-    def __init__(self, pset, n_jobs=1, model=None,
-                 n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
-                 use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None,
-                 ranking=False, mse_both=False, new=False, **kwargs):
+    def __init__(self, pset, n_jobs=1, n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None,
+                 verbose=False, readout='concat', use_global_node=False, gcn_transform=False,
+                 include_features=False, n_features=None, ranking=False, mse_both=False, auxiliary_weight=0.1,
+                 use_auxiliary=False, out_lim=100, sample_size=20, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
 
-        if model is None:
-            if new:
-                model = GINConcat(len(self.feature_template) + 2)
-            else:
-                n_features = None if not include_features else n_features
-                model = GINModel(len(self.feature_template) + 2,
-                                 use_root=use_root or use_global_node, n_features=n_features, **kwargs)
-
-        self.model = model
+        self.n_features = None if not include_features else n_features
+        self.readout = readout
+        self.model_kwargs = kwargs
 
         self.n_epochs = n_epochs
         self.batch_size = batch_size
@@ -153,10 +148,20 @@ class NeuralNetSurrogate(SurrogateBase):
         self.criterion = loss
         self.verbose = verbose
 
-        self.use_root = use_root
+        self.use_root = readout == 'root'
         self.use_global_node = use_global_node
         self.include_features = include_features
         self.transform = None if not gcn_transform else GCNNorm()
+
+        self.out_lim = out_lim
+        self.sample_size = sample_size
+
+        self.auxiliary_weight = auxiliary_weight
+        self.use_auxiliary = use_auxiliary
+
+    def _init_model(self):
+        self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features,
+                               readout=self.readout, use_auxiliary=self.use_auxiliary, **self.model_kwargs)
 
     def _get_features(self, inds, first_gen=False):
         feats = np.vstack([ind.features.to_numpy() for ind in inds])
@@ -170,18 +175,27 @@ class NeuralNetSurrogate(SurrogateBase):
 
     def _create_dataset(self, inds, fitness=None, first_gen=False):
         feats = self._get_features(inds, first_gen=first_gen) if self.include_features else None
+        inds_orig = inds
+
         inds = [compile_tree(ind, self.feature_template,
                              use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
 
+        if self.use_auxiliary and hasattr(inds_orig[0], 'io'):
+            aux_sample = _get_aux_sample(inds_orig, out_lim=self.out_lim, sample_size=self.sample_size)
+        else:
+            aux_sample = None
+
         dataset = to_dataset(inds, y_accuracies=fitness, x_features=feats,
-                             batch_size=self.batch_size, shuffle=self.shuffle)
+                             batch_size=self.batch_size, shuffle=self.shuffle, aux=aux_sample)
         return dataset
 
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
+        self._init_model()
 
-        train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-              verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both)
+        train_gnn(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                  verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both,
+                  auxiliary_weight=self.auxiliary_weight)
 
         return self
 
@@ -193,26 +207,40 @@ class NeuralNetSurrogate(SurrogateBase):
             batch = self.transform(batch) if self.transform is not None else batch
             features = batch.features if 'features' in batch else None
 
-            pred = self.model(batch.x, batch.edge_index, batch.batch, features=features)
+            pred, _ = self.model(batch.x, batch.edge_index, batch.batch, features=features)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)
 
 
+def _get_aux_sample(inds, out_lim=100, sample_size=20):
+    aux_sample = []
+    for ind in inds:
+        # filter valid
+        ok = np.abs(ind.io[1]) < out_lim
+        ind.io = ind.io[0][ok], ind.io[1][ok]
+
+        # sample
+        replace = ind.io[0].shape[0] < sample_size
+        select = np.random.choice(ind.io[0].shape[0], sample_size, replace=replace)
+        aux_sample.append((ind.io[0][select].astype(np.float32), ind.io[1][select].astype(np.float32)))
+    return aux_sample
+
+
 class TreeLSTMSurrogate(SurrogateBase):
 
-    def __init__(self, pset, n_jobs=1,  model=None,
+    def __init__(self, pset, n_jobs=1,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, include_features=False, n_features=None,
-                 ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.1, **kwargs):
+                 ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.1,
+                 out_lim=100, sample_size=20, **kwargs):
+        super().__init__(pset, n_jobs=n_jobs)
 
         self.feature_template = gen_feature_vec_template(pset)
 
-        if model is None:
-            n_features = None if not include_features else n_features
-            model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, n_features=n_features, use_auxiliary=use_auxiliary, auxiliary_weight=auxiliary_weight, **kwargs)
+        n_features = None if not include_features else n_features
+        self.model_kwargs = kwargs
 
-        self.pset = pset
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -223,12 +251,12 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.include_features = include_features
         self.n_features = n_features
         self.use_global_node = use_global_node
-        self.model = model
-        self.n_jobs = n_jobs
         self.ranking = ranking
         self.mse_both = mse_both
         self.use_auxiliary = use_auxiliary
         self.auxiliary_weight = auxiliary_weight
+        self.out_lim = out_lim
+        self.sample_size = sample_size
 
     def _collate_fn(self, x):
         data = {}
@@ -252,17 +280,12 @@ class TreeLSTMSurrogate(SurrogateBase):
     def _create_dataset(self, inds, fitness=None, first_gen=False):
         feats = self._get_features(inds, first_gen=first_gen) if self.include_features else [torch.tensor([0])]*len(inds)
         fitness = fitness or [0]*len(inds)
-        aux_sample = []
+
         if hasattr(inds[0], 'io'):
-            for ind in inds:
-                ok = np.abs(ind.io[1]) < 100
-                ind.io = ind.io[0][ok], ind.io[1][ok]
-                replace = ind.io[0].shape[0] < 20
-                select = np.random.choice(ind.io[0].shape[0], 20, replace=replace) # TODO: add argument
-                aux_sample.append((ind.io[0][select].astype(np.float32), ind.io[1][select].astype(np.float32)))
+            aux_sample = _get_aux_sample(inds, out_lim=self.out_lim, sample_size=self.sample_size)
         else:
             aux_sample = [None]*len(inds)
-        data = [{'x' : tree_nn.tnn_utils.convert_tree_to_tensors(tree_nn.tnn_utils.ind_to_tree(ind, self.feature_template)[0]), 
+        data = [{'x' : convert_tree_to_tensors(ind_to_tree(ind, self.feature_template)[0]),
                  'y' : fit,
                  'features': features,
                  'aux_x': aux[0] if aux else None,
@@ -272,9 +295,13 @@ class TreeLSTMSurrogate(SurrogateBase):
 
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
-        #self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
-        tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
-              verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary, auxiliary_weight=self.auxiliary_weight)
+        self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
+                                   use_auxiliary=self.use_auxiliary,
+                                   auxiliary_weight=self.auxiliary_weight, **self.model_kwargs).train()
+
+        train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                   verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
+                   auxiliary_weight=self.auxiliary_weight)
         return self
 
     def predict(self, inds):
