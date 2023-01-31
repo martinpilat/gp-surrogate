@@ -1,8 +1,10 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Linear
-from torch_geometric.nn import GIN, global_mean_pool, GCN
+from torch_geometric.nn.conv import GINConv
+from torch_geometric.nn import GIN, global_mean_pool, GCN, global_add_pool
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import GCNNorm
@@ -61,6 +63,88 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
             epoch_losses.append(e_loss)
 
     return epoch_losses
+
+
+class MLP(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, n_linear=2):
+        super().__init__()
+
+        self.linears = nn.ModuleList(
+            [nn.Linear(input_dim if i == 0 else hidden_dim, hidden_dim) for i in range(n_linear)]
+        )
+        self.batch_norms = nn.ModuleList([nn.BatchNorm1d(hidden_dim) for _ in range(n_linear - 1)])
+
+    def forward(self, x):
+        for i, lin in enumerate(self.linears):
+            if i != 0:
+                x = self.batch_norms[i - 1](x)
+                x = F.relu(x)
+            x = lin(x)
+        return x
+
+
+def _get_MLP(n_in, n_hidden, n_linear, i):
+    return MLP(n_in if i == 0 else n_hidden, n_hidden, n_linear=n_linear)
+
+
+class GINConcat(torch.nn.Module):
+    def __init__(self, n_node_features, n_hidden=32, n_convs=3, n_linear=2, n_mlp_linear=2, dropout=0.1, use_root=False,
+                 n_features=None, concat_readout=True):
+        super().__init__()
+        self.convs = nn.ModuleList(
+            [GINConv(_get_MLP(n_node_features, n_hidden, n_mlp_linear, i)) for i in range(n_convs)]
+        )
+        self.batch_norms = nn.ModuleList([nn.BatchNorm1d(n_hidden) for _ in range(n_convs)])
+
+        # first input of the linear layers is
+        n_features = 0 if n_features is None else n_features
+        lin_dim = (n_hidden * n_convs + n_node_features) if concat_readout else (n_hidden + n_node_features)
+        self.lins = torch.nn.ModuleList(
+            [Linear(lin_dim if i != 0 else (lin_dim + n_features), lin_dim if i < n_linear - 1 else 1)
+             for i in range(n_linear)]
+        )
+
+        self.dropout = dropout
+        self.use_root = use_root
+        self.concat_readout = concat_readout
+
+    def forward(self, x, edge_index, batch, features=None):
+        # flags if root features are GIN's output
+        flags = None
+        if self.use_root:
+            x, flags = x[:, :-1], x[:, -1]
+
+        # concat readout - inputs
+        h_out = []
+        if self.concat_readout:
+            h_out.append(global_add_pool(x, batch))
+
+        for conv, bn in zip(self.convs, self.batch_norms):
+            x = conv(x, edge_index)
+            x = bn(x)
+            x = F.relu(x)
+            # concat readout - hidden
+            if self.concat_readout:
+                h_out.append(global_add_pool(x, batch))
+
+        if self.concat_readout:
+            h = torch.cat(h_out, dim=1)  # concat readout
+        elif self.use_root:
+            h = x[flags.type(torch.bool)]  # root features readout
+        else:
+            h = global_mean_pool(x, batch)  # global avg pooling readout
+
+        # add manual features
+        if features is not None:
+            h = torch.concat([h, features], dim=-1)
+
+        for i, lin in enumerate(self.lins):
+            if i != 0:
+                h = F.relu(h)
+                h = F.dropout(h, p=self.dropout, training=self.training)
+            h = lin(h)
+
+        return h.squeeze(1)
 
 
 class GINModel(torch.nn.Module):

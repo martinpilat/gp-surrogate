@@ -11,7 +11,7 @@ from sklearn import pipeline, ensemble, impute
 from torch_geometric.transforms import GCNNorm
 from torch.utils.data import DataLoader
 
-from gnn.model import GINModel, to_dataset, train
+from gnn.model import GINModel, to_dataset, train, GINConcat
 from gnn.graph import gen_feature_vec_template, compile_tree
 
 import tree_nn.model
@@ -128,15 +128,18 @@ class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, gcn_transform=False, include_features=False, n_features=None,
-                 ranking=False, mse_both=False, **kwargs):
+                 ranking=False, mse_both=False, new=False, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
 
         if model is None:
-            n_features = None if not include_features else n_features
-            model = GINModel(len(self.feature_template) + 2,
-                             use_root=use_root or use_global_node, n_features=n_features, **kwargs)
+            if new:
+                model = GINConcat(len(self.feature_template) + 2)
+            else:
+                n_features = None if not include_features else n_features
+                model = GINModel(len(self.feature_template) + 2,
+                                 use_root=use_root or use_global_node, n_features=n_features, **kwargs)
 
         self.model = model
 
@@ -194,6 +197,7 @@ class NeuralNetSurrogate(SurrogateBase):
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)
+
 
 class TreeLSTMSurrogate(SurrogateBase):
 
