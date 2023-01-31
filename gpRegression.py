@@ -140,6 +140,14 @@ if surrogate_name == 'GNN':
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 1}
+if surrogate_name == 'GNNnew':
+    surrogate_cls = surrogate.NeuralNetSurrogate
+    surrogate_kwargs = {'use_root': False, 'use_global_node': False, 'gcn_transform': False,
+                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'new': True,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_outputs': 1}
 if surrogate_name == 'TNN':
     surrogate_cls = surrogate.TreeLSTMSurrogate
     surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
