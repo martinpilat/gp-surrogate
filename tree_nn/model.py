@@ -56,33 +56,36 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
     return epoch_losses
 
 
+def _get_lins(in_size, n_hidden, n_out, n_lin):
+    in_sizes = [(in_size if i == 0 else n_hidden) for i in range(n_lin)]
+    out_sizes = [(n_out if i == (n_lin - 1) else n_hidden) for i in range(n_lin)]
+    return torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in zip(in_sizes, out_sizes)])
+
+
 class TreeLSTMModel(torch.nn.Module):
-    def __init__(self, n_node_features, n_hidden=32, n_lin=2, dropout=0.1, use_root=False, n_features=None, use_auxiliary=False, auxiliary_weight=0.1, n_aux_inputs=None, n_aux_outputs=None):
+    def __init__(self, n_node_features, n_hidden=32, n_lin=2, dropout=0.1, use_root=False, n_features=None,
+                 use_auxiliary=False, auxiliary_weight=0.1, n_aux_inputs=None, n_aux_outputs=None,
+                 aux_hidden=32):
 
         super().__init__()
         self.dropout = dropout
 
         self.lstm = treelstm.TreeLSTM(n_node_features, n_hidden)
         self.concat_lin = None
-        self.n_features = n_features
         self.aux_concat_lin = None
         self.aux_lins = None
         self.aux_lin = None
         self.aux_weight = auxiliary_weight
         self.use_auxiliary = use_auxiliary
 
-        self.lins = torch.nn.ModuleList([Linear(n_hidden, n_hidden) for _ in range(n_lin)])
-        self.lin = Linear(n_hidden, 1)
+        n_features = n_features if n_features is not None else 0
 
-        if n_features is not None:
-            self.concat_lin = Linear(n_hidden + n_features, n_hidden)
+        self.lins = _get_lins(n_hidden + n_features, n_hidden, 1, n_lin)
 
         self.use_root = use_root
 
         if use_auxiliary:
-            self.aux_concat_lin = Linear(n_hidden + (n_features if n_features else 0) + n_aux_inputs, n_hidden) #TODO: separate parameter for aux_hidden
-            self.aux_lins = torch.nn.ModuleList([Linear(n_hidden, n_hidden) for _ in range(n_lin)])
-            self.aux_lin = Linear(n_hidden, n_aux_outputs)
+            self.aux_lins = _get_lins(n_hidden + n_features + n_aux_inputs, aux_hidden, n_aux_outputs, n_lin)
 
     def forward(self, x, features=None, aux_x=None):
         batch_info = x['tree_sizes']
@@ -92,39 +95,27 @@ class TreeLSTMModel(torch.nn.Module):
             x = torch.vstack([i[0] for i in x])
         else:
             x = torch.vstack([torch.mean(i, axis=0) for i in x])
-        
+
+        # add manual features
+        if self.concat_lin is not None:
+            x = torch.concat([x, features], dim=-1)
         embed = x
 
-        x = F.relu(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
+        # linear layers
+        for i, lin in enumerate(self.lins):
+            if i != 0:
+                x = F.relu(x)
+                x = F.dropout(x, p=self.dropout, training=self.training)
+            x = lin(x)
 
-        if self.concat_lin:
-            #features = torch.tanh(features)
-            x = torch.concat([x, features], dim=-1)
-            x = self.concat_lin(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        for l in self.lins:
-            x = l(x)
-            x = F.relu(x, inplace=True)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        x = self.lin(x)
-
+        # aux inputs
         if self.use_auxiliary and aux_x is not None:
-            if self.concat_lin: 
-                embed = torch.concat([embed, features], dim=-1)              
-            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_x], dim=2).reshape(-1, embed.shape[-1]+aux_x.shape[-1])
-            aux_x = self.aux_concat_lin(aux_x)
-            aux_x = F.relu(aux_x)
-            aux_x = F.dropout(aux_x, p=self.dropout, training=self.training)
+            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_x], dim=2).reshape(-1, embed.shape[-1] + aux_x.shape[-1])
 
-            for l in self.aux_lins:
-                aux_x = l(aux_x)
-                aux_x = F.relu(aux_x, inplace=True)
-                aux_x = F.dropout(aux_x, p=self.dropout, training=self.training)
-            
-            aux_x = self.aux_lin(aux_x)
+            for i, lin in enumerate(self.aux_lins):
+                if i != 0:
+                    aux_x = F.relu(aux_x)
+                    aux_x = F.dropout(aux_x, p=self.dropout, training=self.training)
+                aux_x = lin(aux_x)
 
         return torch.flatten(x), torch.flatten(aux_x) if aux_x is not None else None

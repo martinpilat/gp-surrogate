@@ -134,17 +134,9 @@ n_features = n_features.shape[1]
 surrogate_name = args.use_surrogate
 if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
+    surrogate_kwargs = {'readout': 'concat', 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
+                        'include_features': False, 'n_features': n_features,
                         'ranking': args.use_ranking, 'mse_both': args.mse_both,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 1}
-if surrogate_name == 'GNNnew':
-    surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'use_root': False, 'use_global_node': False, 'gcn_transform': False,
-                        'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'new': True,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 1}
@@ -156,7 +148,6 @@ if surrogate_name == 'TNN':
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 1}
-
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}

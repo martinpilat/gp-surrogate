@@ -10,20 +10,29 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.transforms import GCNNorm
 
 
-def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, shuffle=True):
+def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, shuffle=True,
+               aux=None):
     y_accuracies = y_accuracies if y_accuracies is not None else [None] * len(ind_graphs)
     x_features = x_features if x_features is not None else [None] * len(ind_graphs)
 
-    data = [Data(x=ind[0], edge_index=ind[1], y=y, features=feat)
-            for ind, y, feat in zip(ind_graphs, y_accuracies, x_features)]
+    if aux is not None:
+        aux_in = [a[0] for a in aux]
+        aux_out = [a[1] for a in aux]
+    else:
+        aux_in = [None] * len(ind_graphs)
+        aux_out = [None] * len(ind_graphs)
+
+    data = [Data(x=ind[0], edge_index=ind[1], y=y, features=feat, aux_in=ain, aux_out=aout)
+            for ind, y, feat, ain, aout in zip(ind_graphs, y_accuracies, x_features, aux_in, aux_out)]
     return DataLoader(data, batch_size=batch_size, shuffle=shuffle)
 
 
 def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-          transform=None, ranking=False, mse_both=False):
+          transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0):
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
 
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
+    aux_criterion = torch.nn.MSELoss()
     ranking_criterion = torch.nn.MarginRankingLoss()
 
     epoch_losses = []
@@ -35,9 +44,21 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
         for data in train_loader:
             data = data if transform is None else transform(data)
             features = data.features if 'features' in data else None
+            aux_in = data.aux_in if 'aux_in' in data else None
+            aux_out = data.aux_out if 'aux_out' in data else None
 
-            out = model(data.x, data.edge_index, data.batch, features=features)  # Perform a single forward pass.
+            out, pred_aux = model(data.x, data.edge_index, data.batch, features=features, aux_in=aux_in)  # Perform a single forward pass.
+
+            # prediction loss
             loss = criterion(out, data.y)
+
+            # aux loss
+            if pred_aux is not None:
+                aux_loss = aux_criterion(aux_out.flatten(), pred_aux.flatten())
+                # print(f'loss = {loss}, aux_loss = {aux_loss}')
+                loss += auxiliary_weight * aux_loss
+
+            # ranking loss
             if ranking and prev is not None and len(prev[0].y) == len(data.y):
                 data_prev, feats_prev = prev
                 out_prev = model(data_prev.x, data_prev.edge_index, data_prev.batch, features=feats_prev)
@@ -69,9 +90,8 @@ class MLP(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, n_linear=2):
         super().__init__()
 
-        self.linears = nn.ModuleList(
-            [nn.Linear(input_dim if i == 0 else hidden_dim, hidden_dim) for i in range(n_linear)]
-        )
+        sizes = _get_sizes(n_linear, hidden_dim, first_size=input_dim)
+        self.linears = nn.ModuleList([nn.Linear(indim, outdim) for indim, outdim in sizes])
         self.batch_norms = nn.ModuleList([nn.BatchNorm1d(hidden_dim) for _ in range(n_linear - 1)])
 
     def forward(self, x):
@@ -87,31 +107,50 @@ def _get_MLP(n_in, n_hidden, n_linear, i):
     return MLP(n_in if i == 0 else n_hidden, n_hidden, n_linear=n_linear)
 
 
+def _get_sizes(n_layers, hidden_size, first_size=None, last_size=None):
+    for i in range(n_layers):
+        if i == 0 and first_size is not None:
+            yield first_size, hidden_size
+        elif i == (n_layers - 1) and last_size is not None:
+            yield hidden_size, last_size
+        else:
+            yield hidden_size, hidden_size
+
+
 class GINConcat(torch.nn.Module):
-    def __init__(self, n_node_features, n_hidden=32, n_convs=3, n_linear=2, n_mlp_linear=2, dropout=0.1, use_root=False,
-                 n_features=None, concat_readout=True):
+    def __init__(self, n_node_features, n_hidden=32, n_convs=3, n_linear=2, n_mlp_linear=2, dropout=0.1,
+                 n_hidden_linear=32, n_features=None, use_auxiliary=False, readout='concat',
+                 n_aux_inputs=None, n_aux_outputs=None, aux_hidden=32):
         super().__init__()
+        if readout not in ['concat', 'root', 'mean']:
+            raise ValueError(f"Readout must be one of , passed value: {self.readout}")
+
+        # convs are followed by batch norm and ReLU
         self.convs = nn.ModuleList(
             [GINConv(_get_MLP(n_node_features, n_hidden, n_mlp_linear, i)) for i in range(n_convs)]
         )
         self.batch_norms = nn.ModuleList([nn.BatchNorm1d(n_hidden) for _ in range(n_convs)])
 
-        # first input of the linear layers is
+        # compute input size of linear layers
         n_features = 0 if n_features is None else n_features
-        lin_dim = (n_hidden * n_convs + n_node_features) if concat_readout else (n_hidden + n_node_features)
-        self.lins = torch.nn.ModuleList(
-            [Linear(lin_dim if i != 0 else (lin_dim + n_features), lin_dim if i < n_linear - 1 else 1)
-             for i in range(n_linear)]
-        )
+        lin_dim = (n_hidden * n_convs + n_node_features) if readout == 'concat' else n_hidden
+
+        lin_sizes = _get_sizes(n_linear, n_hidden_linear, first_size=lin_dim + n_features, last_size=1)
+        self.lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
         self.dropout = dropout
-        self.use_root = use_root
-        self.concat_readout = concat_readout
+        self.readout = readout
+        self.use_auxiliary = use_auxiliary
 
-    def forward(self, x, edge_index, batch, features=None):
+        if use_auxiliary:
+            lin_sizes = _get_sizes(n_linear, aux_hidden,
+                                   first_size=lin_dim + n_features + n_aux_inputs, last_size=n_aux_outputs)
+            self.aux_lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
+
+    def forward(self, x, edge_index, batch, features=None, aux_in=None):
         # flags if root features are GIN's output
         flags = None
-        if self.use_root:
+        if self.readout == 'root':
             x, flags = x[:, :-1], x[:, -1]
 
         # concat readout - inputs
@@ -127,68 +166,39 @@ class GINConcat(torch.nn.Module):
             if self.concat_readout:
                 h_out.append(global_add_pool(x, batch))
 
-        if self.concat_readout:
+        if self.readout == 'concat':
             h = torch.cat(h_out, dim=1)  # concat readout
-        elif self.use_root:
+        elif self.readout == 'root':
             h = x[flags.type(torch.bool)]  # root features readout
-        else:
+        elif self.readout == 'mean':
             h = global_mean_pool(x, batch)  # global avg pooling readout
+        else:
+            raise ValueError(f"Invalid readout: {self.readout}")
 
         # add manual features
         if features is not None:
             h = torch.concat([h, features], dim=-1)
 
+        embed = h
+
+        # linear layers
         for i, lin in enumerate(self.lins):
             if i != 0:
                 h = F.relu(h)
                 h = F.dropout(h, p=self.dropout, training=self.training)
             h = lin(h)
 
-        return h.squeeze(1)
+        # aux inputs
+        if self.use_auxiliary and aux_in is not None:
+            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_in], dim=2)
+            aux_x = aux_x.reshape(-1, embed.shape[-1] + aux_in.shape[-1])
 
+            for i, lin in enumerate(self.aux_lins):
+                if i != 0:
+                    h = F.relu(h)
+                    h = F.dropout(h, p=self.dropout, training=self.training)
+                h = lin(h)
 
-class GINModel(torch.nn.Module):
-    def __init__(self, n_node_features, n_hidden=64, n_convs=3, n_lin=2, dropout=0.1, use_root=False, n_features=None):
+            return torch.flatten(h), torch.flatten(aux_x) if aux_x is not None else None
 
-        super().__init__()
-        self.dropout = dropout
-
-        self.gin = GIN(n_node_features, n_hidden, n_convs, dropout=dropout)
-        #self.gin = GCN(n_node_features, n_hidden, n_convs, dropout=dropout)
-
-        if n_features is not None:
-            self.concat_lin = Linear(n_hidden + n_features, n_hidden)
-
-        self.lins = torch.nn.ModuleList([Linear(n_hidden, n_hidden) for _ in range(n_lin)])
-        self.lin = Linear(n_hidden, 1)
-
-        self.use_root = use_root
-
-    def forward(self, x, edge_index, batch, features=None):
-        flags = None
-        if self.use_root:
-            x, flags = x[:, :-1], x[:, -1]
-
-        x = self.gin(x, edge_index)
-        if self.use_root:
-            x = x[flags.type(torch.bool)]
-        else:
-            x = global_mean_pool(x, batch)
-
-        x = F.relu(x)
-        x = F.dropout(x, p=self.dropout, training=self.training)
-
-        if features is not None:
-            x = torch.concat([x, features], dim=-1)
-            x = self.concat_lin(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        for l in self.lins:
-            x = l(x)
-            x = F.relu(x, inplace=True)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        x = self.lin(x)
-
-        return torch.flatten(x)
+        return torch.flatten(h), None
