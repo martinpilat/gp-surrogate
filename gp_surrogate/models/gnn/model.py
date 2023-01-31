@@ -4,10 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn.conv import GINConv
-from torch_geometric.nn import GIN, global_mean_pool, GCN, global_add_pool
+from torch_geometric.nn import global_mean_pool, global_add_pool
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.transforms import GCNNorm
+
+from gp_surrogate.models.utils import get_layer_sizes, apply_layer_dropout_relu
 
 
 def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, shuffle=True,
@@ -27,8 +28,8 @@ def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, sh
     return DataLoader(data, batch_size=batch_size, shuffle=shuffle)
 
 
-def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-          transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0):
+def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
+              transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0):
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
 
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
@@ -44,8 +45,8 @@ def train(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, crit
         for data in train_loader:
             data = data if transform is None else transform(data)
             features = data.features if 'features' in data else None
-            aux_in = data.aux_in if 'aux_in' in data else None
-            aux_out = data.aux_out if 'aux_out' in data else None
+            aux_in = torch.tensor(data.aux_in) if 'aux_in' in data else None
+            aux_out = torch.tensor(data.aux_out) if 'aux_out' in data else None
 
             out, pred_aux = model(data.x, data.edge_index, data.batch, features=features, aux_in=aux_in)  # Perform a single forward pass.
 
@@ -90,7 +91,7 @@ class MLP(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, n_linear=2):
         super().__init__()
 
-        sizes = _get_sizes(n_linear, hidden_dim, first_size=input_dim)
+        sizes = get_layer_sizes(n_linear, hidden_dim, first_size=input_dim)
         self.linears = nn.ModuleList([nn.Linear(indim, outdim) for indim, outdim in sizes])
         self.batch_norms = nn.ModuleList([nn.BatchNorm1d(hidden_dim) for _ in range(n_linear - 1)])
 
@@ -105,16 +106,6 @@ class MLP(torch.nn.Module):
 
 def _get_MLP(n_in, n_hidden, n_linear, i):
     return MLP(n_in if i == 0 else n_hidden, n_hidden, n_linear=n_linear)
-
-
-def _get_sizes(n_layers, hidden_size, first_size=None, last_size=None):
-    for i in range(n_layers):
-        if i == 0 and first_size is not None:
-            yield first_size, hidden_size
-        elif i == (n_layers - 1) and last_size is not None:
-            yield hidden_size, last_size
-        else:
-            yield hidden_size, hidden_size
 
 
 class GINConcat(torch.nn.Module):
@@ -135,7 +126,7 @@ class GINConcat(torch.nn.Module):
         n_features = 0 if n_features is None else n_features
         lin_dim = (n_hidden * n_convs + n_node_features) if readout == 'concat' else n_hidden
 
-        lin_sizes = _get_sizes(n_linear, n_hidden_linear, first_size=lin_dim + n_features, last_size=1)
+        lin_sizes = get_layer_sizes(n_linear, n_hidden_linear, first_size=lin_dim + n_features, last_size=1)
         self.lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
         self.dropout = dropout
@@ -143,8 +134,8 @@ class GINConcat(torch.nn.Module):
         self.use_auxiliary = use_auxiliary
 
         if use_auxiliary:
-            lin_sizes = _get_sizes(n_linear, aux_hidden,
-                                   first_size=lin_dim + n_features + n_aux_inputs, last_size=n_aux_outputs)
+            lin_sizes = get_layer_sizes(n_linear, aux_hidden,
+                                        first_size=lin_dim + n_features + n_aux_inputs, last_size=n_aux_outputs)
             self.aux_lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
     def forward(self, x, edge_index, batch, features=None, aux_in=None):
@@ -155,7 +146,7 @@ class GINConcat(torch.nn.Module):
 
         # concat readout - inputs
         h_out = []
-        if self.concat_readout:
+        if self.readout == 'concat':
             h_out.append(global_add_pool(x, batch))
 
         for conv, bn in zip(self.convs, self.batch_norms):
@@ -163,7 +154,7 @@ class GINConcat(torch.nn.Module):
             x = bn(x)
             x = F.relu(x)
             # concat readout - hidden
-            if self.concat_readout:
+            if self.readout == 'concat':
                 h_out.append(global_add_pool(x, batch))
 
         if self.readout == 'concat':
@@ -182,22 +173,14 @@ class GINConcat(torch.nn.Module):
         embed = h
 
         # linear layers
-        for i, lin in enumerate(self.lins):
-            if i != 0:
-                h = F.relu(h)
-                h = F.dropout(h, p=self.dropout, training=self.training)
-            h = lin(h)
+        h = apply_layer_dropout_relu(h, self.lins, self.dropout, self.training)
 
         # aux inputs
         if self.use_auxiliary and aux_in is not None:
             aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_in], dim=2)
             aux_x = aux_x.reshape(-1, embed.shape[-1] + aux_in.shape[-1])
 
-            for i, lin in enumerate(self.aux_lins):
-                if i != 0:
-                    h = F.relu(h)
-                    h = F.dropout(h, p=self.dropout, training=self.training)
-                h = lin(h)
+            aux_x = apply_layer_dropout_relu(aux_x, self.aux_lins, self.dropout, self.training)
 
             return torch.flatten(h), torch.flatten(aux_x) if aux_x is not None else None
 

@@ -1,7 +1,7 @@
 import torch
 import treelstm
 
-from gnn.graph import node_features
+from gp_surrogate.models.gnn.graph import node_features
 
 def ind_to_tree(ind, template):
     if ind[0].arity == 0:

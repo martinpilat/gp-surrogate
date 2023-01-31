@@ -11,11 +11,11 @@ from sklearn import pipeline, ensemble, impute
 from torch_geometric.transforms import GCNNorm
 from torch.utils.data import DataLoader
 
-from gnn.model import to_dataset, train, GINConcat
-from gnn.graph import gen_feature_vec_template, compile_tree
+from gp_surrogate.models.gnn.model import to_dataset, GINConcat, train_gnn
+from gp_surrogate.models.gnn.graph import gen_feature_vec_template, compile_tree
 
-import tree_nn.model
-import tree_nn.tnn_utils
+from gp_surrogate.models.tree_nn.tnn_utils import convert_tree_to_tensors, ind_to_tree
+from gp_surrogate.models.tree_nn.model import TreeLSTMModel, train_lstm
 
 import treelstm
 
@@ -161,7 +161,7 @@ class NeuralNetSurrogate(SurrogateBase):
 
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features,
-                               readout=self.readout, **self.model_kwargs)
+                               readout=self.readout, use_auxiliary=self.use_auxiliary, **self.model_kwargs)
 
     def _get_features(self, inds, first_gen=False):
         feats = np.vstack([ind.features.to_numpy() for ind in inds])
@@ -175,11 +175,13 @@ class NeuralNetSurrogate(SurrogateBase):
 
     def _create_dataset(self, inds, fitness=None, first_gen=False):
         feats = self._get_features(inds, first_gen=first_gen) if self.include_features else None
+        inds_orig = inds
+
         inds = [compile_tree(ind, self.feature_template,
                              use_root=self.use_root, use_global_node=self.use_global_node) for ind in inds]
 
-        if self.use_auxiliary:
-            aux_sample = _get_aux_sample(inds, out_lim=self.out_lim, sample_size=self.sample_size)
+        if self.use_auxiliary and hasattr(inds_orig[0], 'io'):
+            aux_sample = _get_aux_sample(inds_orig, out_lim=self.out_lim, sample_size=self.sample_size)
         else:
             aux_sample = None
 
@@ -191,9 +193,9 @@ class NeuralNetSurrogate(SurrogateBase):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
         self._init_model()
 
-        train(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-              verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both,
-              auxiliary_weight=self.auxiliary_weight)
+        train_gnn(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                  verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both,
+                  auxiliary_weight=self.auxiliary_weight)
 
         return self
 
@@ -283,7 +285,7 @@ class TreeLSTMSurrogate(SurrogateBase):
             aux_sample = _get_aux_sample(inds, out_lim=self.out_lim, sample_size=self.sample_size)
         else:
             aux_sample = [None]*len(inds)
-        data = [{'x' : tree_nn.tnn_utils.convert_tree_to_tensors(tree_nn.tnn_utils.ind_to_tree(ind, self.feature_template)[0]), 
+        data = [{'x' : convert_tree_to_tensors(ind_to_tree(ind, self.feature_template)[0]),
                  'y' : fit,
                  'features': features,
                  'aux_x': aux[0] if aux else None,
@@ -293,12 +295,13 @@ class TreeLSTMSurrogate(SurrogateBase):
 
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
-        self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
-                                                 use_auxiliary=self.use_auxiliary,
-                                                 auxiliary_weight=self.auxiliary_weight, **self.model_kwargs).train()
+        self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
+                                   use_auxiliary=self.use_auxiliary,
+                                   auxiliary_weight=self.auxiliary_weight, **self.model_kwargs).train()
 
-        tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
-              verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary, auxiliary_weight=self.auxiliary_weight)
+        train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                   verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
+                   auxiliary_weight=self.auxiliary_weight)
         return self
 
     def predict(self, inds):

@@ -1,18 +1,16 @@
-from distutils import log
 from deap import tools, base, creator, gp
 import pandas as pd
 import operator
 import math
 import random
 import numpy as np
-import benchmarks
-import algo
 import argparse
 import json
 import gym
 
 # decription of the benchmarks
-import surrogate
+from gp_surrogate import surrogate, benchmarks, algo
+
 
 def ot_cartpole(x):
     return 1 if x > 0 else 0
@@ -288,8 +286,8 @@ def run_model_test(i, bench):
 
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
-                                       surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
+                                                surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
 
     return pop, log, hof, feat_imp
 
@@ -335,9 +333,9 @@ def run_surrogate(i, bench):
     # run the surrogate algorithm
     if args.use_local_search :
         pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
-                                        stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
-                                        train_fit_lim=train_fit_lim,
-                                        surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                 stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
+                                                 train_fit_lim=train_fit_lim,
+                                                 surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
     else: 
         pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                             stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,

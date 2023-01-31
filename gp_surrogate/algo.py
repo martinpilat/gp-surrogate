@@ -2,9 +2,8 @@ import sys
 import sklearn.metrics
 from deap import tools
 import random
-import surrogate
+from gp_surrogate import surrogate
 import pandas as pd
-from sklearn import ensemble, pipeline, impute, svm
 import math
 import numpy as np
 import joblib
