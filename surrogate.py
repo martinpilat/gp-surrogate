@@ -200,13 +200,13 @@ class TreeLSTMSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1,  model=None,
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, include_features=False, n_features=None,
-                 ranking=False, mse_both=False, **kwargs):
+                 ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.1, **kwargs):
 
         self.feature_template = gen_feature_vec_template(pset)
 
         if model is None:
             n_features = None if not include_features else n_features
-            model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, n_features=n_features, **kwargs)
+            model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, n_features=n_features, use_auxiliary=use_auxiliary, auxiliary_weight=auxiliary_weight, **kwargs)
 
         self.pset = pset
         self.n_epochs = n_epochs
@@ -223,12 +223,16 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.n_jobs = n_jobs
         self.ranking = ranking
         self.mse_both = mse_both
+        self.use_auxiliary = use_auxiliary
+        self.auxiliary_weight = auxiliary_weight
 
     def _collate_fn(self, x):
         data = {}
         data['x'] = treelstm.batch_tree_input([d['x'] for d in x])
         data['y'] = torch.tensor([d['y'] for d in x])
         data['features'] = torch.vstack([d['features'] for d in x])
+        data['aux_x'] = torch.tensor([d['aux_x'] for d in x])
+        data['aux_y'] = torch.tensor([d['aux_y'] for d in x])
         return data
 
     def _get_features(self, inds, first_gen=False):
@@ -244,17 +248,29 @@ class TreeLSTMSurrogate(SurrogateBase):
     def _create_dataset(self, inds, fitness=None, first_gen=False):
         feats = self._get_features(inds, first_gen=first_gen) if self.include_features else [torch.tensor([0])]*len(inds)
         fitness = fitness or [0]*len(inds)
+        aux_sample = []
+        if hasattr(inds[0], 'io'):
+            for ind in inds:
+                ok = np.abs(ind.io[1]) < 100
+                ind.io = ind.io[0][ok], ind.io[1][ok]
+                replace = ind.io[0].shape[0] < 20
+                select = np.random.choice(ind.io[0].shape[0], 20, replace=replace) # TODO: add argument
+                aux_sample.append((ind.io[0][select].astype(np.float32), ind.io[1][select].astype(np.float32)))
+        else:
+            aux_sample = [None]*len(inds)
         data = [{'x' : tree_nn.tnn_utils.convert_tree_to_tensors(tree_nn.tnn_utils.ind_to_tree(ind, self.feature_template)[0]), 
                  'y' : fit,
-                 'features': features}
-                    for ind, fit, features in zip(inds, fitness, feats)]
+                 'features': features,
+                 'aux_x': aux[0] if aux else None,
+                 'aux_y': aux[1] if aux else None}
+                    for ind, fit, features, aux in zip(inds, fitness, feats, aux_sample)]
         return DataLoader(data, collate_fn=self._collate_fn, batch_size=self.batch_size)
 
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
-        self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
+        #self.model = tree_nn.model.TreeLSTMModel(len(self.feature_template) + 2, 32, n_features=self.n_features).train()
         tree_nn.model.train(self.model, dataset, n_epochs=self.n_epochs,  optimizer=self.optimizer, criterion=self.criterion,
-              verbose=False, ranking=self.ranking, mse_both=self.mse_both)
+              verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary, auxiliary_weight=self.auxiliary_weight)
         return self
 
     def predict(self, inds):
@@ -264,7 +280,7 @@ class TreeLSTMSurrogate(SurrogateBase):
         for batch in dataset:
             features = batch['features'] if 'features' in batch else None
 
-            pred = self.model(batch['x'], features=features)
+            pred, _ = self.model(batch['x'], features=features)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)

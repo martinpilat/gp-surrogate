@@ -98,9 +98,11 @@ parser.add_argument('--n_cpus', '-C', type=int, default=1)
 parser.add_argument('--repeats', '-K', type=int, help='How many times to run the algorithm', default=25)
 parser.add_argument('--max_evals', '-E', type=int, help='Maximum number of fitness evaluations', default=10000)
 parser.add_argument('--use_local_search', '-L', help='Use local search algorithm', action='store_true')
+parser.add_argument('--use_auxiliary', '-A', help='Use auxiliary task during training', action='store_true')
+parser.add_argument('--auxiliary_weight', '-W', type=float, help='The weight for auxiliary task', default=0.1)
 args = parser.parse_args()
 
-print(args.use_surrogate)
+print(args)
 
 if args.use_surrogate:
     if args.use_surrogate not in ['RF', 'TNN', 'GNN']:
@@ -134,12 +136,18 @@ if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
     surrogate_kwargs = {'use_root': False, 'use_global_node': True, 'gcn_transform': False,
                         'n_epochs': 20, 'shuffle': False, 'include_features': False, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both}
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_outputs': 1}
 if surrogate_name == 'TNN':
     surrogate_cls = surrogate.TreeLSTMSurrogate
     surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
                         'include_features': False, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both}
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_outputs': 1}
 
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
@@ -158,7 +166,11 @@ if args.use_local_search:
 def eval_symb_reg(individual, points, values):
         try:
             func = toolbox.compile(expr=individual)
-            sqerrors = [(func(*z) - valx)**2 for z, valx in zip(points, values)]
+            outputs = [func(*z) for z in points]
+            io_feat = [(i, o) for i, o in zip(points, outputs)]
+            sqerrors = [(o - valx)**2 for o, valx in zip(outputs, values)]
+            if args.use_auxiliary:
+                individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
             return math.log10(math.sqrt(math.fsum(sqerrors)) / len(points)),
         except OverflowError:
             return 1000.0,
@@ -167,15 +179,20 @@ def eval_rl(individual, environment, output_transform):
     try:
         func = toolbox.compile(expr=individual)
         R = 0
+        io_feat = []
         for s in range(5):
             environment.seed(s)
             obs = environment.reset()
             done = False
             while not done:
                 obs = list(obs)
-                action = output_transform(func(*obs))
+                o = func(*obs)
+                action = output_transform(o)
+                io_feat.append((obs, o))
                 obs, r, done, _ = environment.step(action)
                 R += float(r)
+        if args.use_auxiliary:
+            individual.io = io_feat
         return -R/5,
     except OverflowError:
         return 100000.0,
@@ -281,8 +298,7 @@ def run_surrogate(i, bench):
     """ Executes one run of the surrogate algorithm
 
     :param i: number of the run
-    :param x: the values for the training instances
-    :param y: the targets for the training instances
+    :param bench: the benchmark to use
     :return: population in the last generation, log of the run, and the hall-of-fame,
     """
 
@@ -347,7 +363,7 @@ def run_all(fn, log_prefix, repeats=25):
     runner = functools.partial(fn, bench=benchmark_description[bench_number])
 
     # run the 25 runs
-    logs = pool.map(runner, range(repeats))
+    logs = map(runner, range(repeats))
     for i, l in enumerate(logs):
         _, log, _ = l
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
