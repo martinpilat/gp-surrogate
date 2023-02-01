@@ -61,7 +61,7 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
 class TreeLSTMModel(torch.nn.Module):
     def __init__(self, n_node_features, n_hidden=32, n_lin=2, dropout=0.1, use_root=False, n_features=None,
                  use_auxiliary=False, auxiliary_weight=0.1, n_aux_inputs=None, n_aux_outputs=None,
-                 aux_hidden=32):
+                 aux_hidden=32, aux_sample_size=20):
 
         super().__init__()
         self.dropout = dropout
@@ -73,6 +73,7 @@ class TreeLSTMModel(torch.nn.Module):
         self.aux_lin = None
         self.aux_weight = auxiliary_weight
         self.use_auxiliary = use_auxiliary
+        self.aux_sample_size = aux_sample_size
 
         n_features = n_features if n_features is not None else 0
 
@@ -105,7 +106,7 @@ class TreeLSTMModel(torch.nn.Module):
 
         # aux inputs
         if self.use_auxiliary and aux_x is not None:
-            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_x], dim=2).reshape(-1, embed.shape[-1] + aux_x.shape[-1])
+            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, self.aux_sample_size, -1), aux_x], dim=2).reshape(-1, embed.shape[-1] + aux_x.shape[-1])
 
             aux_x = apply_layer_dropout_relu(aux_x, self.aux_lins, self.dropout, self.training)
 

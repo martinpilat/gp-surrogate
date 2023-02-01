@@ -111,7 +111,7 @@ def _get_MLP(n_in, n_hidden, n_linear, i):
 class GINConcat(torch.nn.Module):
     def __init__(self, n_node_features, n_hidden=32, n_convs=3, n_linear=2, n_mlp_linear=2, dropout=0.1,
                  n_hidden_linear=32, n_features=None, use_auxiliary=False, readout='concat',
-                 n_aux_inputs=None, n_aux_outputs=None, aux_hidden=32):
+                 n_aux_inputs=None, n_aux_outputs=None, aux_hidden=32, aux_sample_size=20):
         super().__init__()
         if readout not in ['concat', 'root', 'mean']:
             raise ValueError(f"Readout must be one of , passed value: {self.readout}")
@@ -132,6 +132,7 @@ class GINConcat(torch.nn.Module):
         self.dropout = dropout
         self.readout = readout
         self.use_auxiliary = use_auxiliary
+        self.aux_sample_size = aux_sample_size
 
         if use_auxiliary:
             lin_sizes = get_layer_sizes(n_linear, aux_hidden,
@@ -177,7 +178,7 @@ class GINConcat(torch.nn.Module):
 
         # aux inputs
         if self.use_auxiliary and aux_in is not None:
-            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, 20, -1), aux_in], dim=2)
+            aux_x = torch.cat([embed.unsqueeze(1).expand(-1, self.aux_sample_size, -1), aux_in], dim=2)
             aux_x = aux_x.reshape(-1, embed.shape[-1] + aux_in.shape[-1])
 
             aux_x = apply_layer_dropout_relu(aux_x, self.aux_lins, self.dropout, self.training)

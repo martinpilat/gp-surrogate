@@ -137,7 +137,7 @@ if surrogate_name == 'GNN':
                         'ranking': args.use_ranking, 'mse_both': args.mse_both,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 1}
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
 if surrogate_name == 'TNN':
     surrogate_cls = surrogate.TreeLSTMSurrogate
     surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
@@ -145,7 +145,7 @@ if surrogate_name == 'TNN':
                         'ranking': args.use_ranking, 'mse_both': args.mse_both, 
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 1}
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
@@ -158,6 +158,9 @@ if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
 
 if args.use_local_search:
     surrogate_name += '-LS'
+
+if args.use_auxiliary:
+    surrogate_name += '-AUX'
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -189,7 +192,7 @@ def eval_rl(individual, environment, output_transform):
                 obs, r, done, _ = environment.step(action)
                 R += float(r)
         if args.use_auxiliary:
-            individual.io = io_feat
+            individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
         return -R/5,
     except OverflowError:
         return 100000.0,

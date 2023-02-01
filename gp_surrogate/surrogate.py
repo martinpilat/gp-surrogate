@@ -161,7 +161,7 @@ class NeuralNetSurrogate(SurrogateBase):
 
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features,
-                               readout=self.readout, use_auxiliary=self.use_auxiliary, **self.model_kwargs)
+                               readout=self.readout, use_auxiliary=self.use_auxiliary, aux_sample_size=self.sample_size, **self.model_kwargs)
 
     def _get_features(self, inds, first_gen=False):
         feats = np.vstack([ind.features.to_numpy() for ind in inds])
@@ -217,13 +217,21 @@ def _get_aux_sample(inds, out_lim=100, sample_size=20):
     aux_sample = []
     for ind in inds:
         # filter valid
-        ok = np.abs(ind.io[1]) < out_lim
-        ind.io = ind.io[0][ok], ind.io[1][ok]
+        aux_x, aux_y = ind.io
+        if len(ind.io[1].shape) == 1:
+            ok = np.abs(aux_y) < out_lim
+            aux_x, aux_y = aux_x[ok], aux_y[ok]
+        else:
+            ok = np.max(np.abs(aux_y), axis=len(aux_y.shape)-1) < out_lim
+            aux_x, aux_y = aux_x[ok], aux_y[ok]
 
         # sample
-        replace = ind.io[0].shape[0] < sample_size
-        select = np.random.choice(ind.io[0].shape[0], sample_size, replace=replace)
-        aux_sample.append((ind.io[0][select].astype(np.float32), ind.io[1][select].astype(np.float32)))
+        if aux_x.shape[0] == 0: # individual has no valid values, use clip instead
+            aux_x = np.clip(ind.io[0], -out_lim, out_lim)
+            aux_y = np.clip(ind.io[1], -out_lim, out_lim)
+        replace = aux_x.shape[0] < sample_size
+        select = np.random.choice(aux_x.shape[0], sample_size, replace=replace)
+        aux_sample.append((aux_x[select].astype(np.float32), aux_y[select].astype(np.float32)))
     return aux_sample
 
 
@@ -297,7 +305,7 @@ class TreeLSTMSurrogate(SurrogateBase):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
         self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
                                    use_auxiliary=self.use_auxiliary,
-                                   auxiliary_weight=self.auxiliary_weight, **self.model_kwargs).train()
+                                   auxiliary_weight=self.auxiliary_weight, aux_sample_size=self.sample_size, **self.model_kwargs).train()
 
         train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
                    verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
