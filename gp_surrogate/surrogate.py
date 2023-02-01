@@ -129,7 +129,7 @@ class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None,
                  verbose=False, readout='concat', use_global_node=False, gcn_transform=False,
                  include_features=False, n_features=None, ranking=False, mse_both=False, auxiliary_weight=0.1,
-                 use_auxiliary=False, out_lim=100, sample_size=20, **kwargs):
+                 use_auxiliary=False, out_lim=100, sample_size=20, device=None, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
@@ -158,10 +158,12 @@ class NeuralNetSurrogate(SurrogateBase):
 
         self.auxiliary_weight = auxiliary_weight
         self.use_auxiliary = use_auxiliary
+        self.device = device
 
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features,
-                               readout=self.readout, use_auxiliary=self.use_auxiliary, aux_sample_size=self.sample_size, **self.model_kwargs)
+                               readout=self.readout, use_auxiliary=self.use_auxiliary, aux_sample_size=self.sample_size,
+                               **self.model_kwargs)
 
     def _get_features(self, inds, first_gen=False):
         feats = np.vstack([ind.features.to_numpy() for ind in inds])
@@ -192,18 +194,22 @@ class NeuralNetSurrogate(SurrogateBase):
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
         self._init_model()
+        self.model.train()
 
         train_gnn(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
                   verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both,
-                  auxiliary_weight=self.auxiliary_weight)
+                  auxiliary_weight=self.auxiliary_weight, device=self.device)
 
         return self
 
     def predict(self, inds):
+        self.model = self.model.to(self.device)
+        self.model.eval()
         dataset = self._create_dataset(inds)
 
         res = []
         for batch in dataset:
+            batch = batch.to(self.device)
             batch = self.transform(batch) if self.transform is not None else batch
             features = batch.features if 'features' in batch else None
 
@@ -241,7 +247,7 @@ class TreeLSTMSurrogate(SurrogateBase):
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, include_features=False, n_features=None,
                  ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.1,
-                 out_lim=100, sample_size=20, **kwargs):
+                 out_lim=100, sample_size=20, device=None, **kwargs):
         super().__init__(pset, n_jobs=n_jobs)
 
         self.feature_template = gen_feature_vec_template(pset)
@@ -265,6 +271,7 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.auxiliary_weight = auxiliary_weight
         self.out_lim = out_lim
         self.sample_size = sample_size
+        self.device = device
 
     def _collate_fn(self, x):
         data = {}
@@ -306,20 +313,23 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
                                    use_auxiliary=self.use_auxiliary,
                                    auxiliary_weight=self.auxiliary_weight, aux_sample_size=self.sample_size, **self.model_kwargs).train()
+        self.model.train()
 
         train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
                    verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
-                   auxiliary_weight=self.auxiliary_weight)
+                   auxiliary_weight=self.auxiliary_weight, device=self.device)
         return self
 
     def predict(self, inds):
+        self.model = self.model.to(self.device)
+        self.model.eval()
         dataset = self._create_dataset(inds)
 
         res = []
         for batch in dataset:
-            features = batch['features'] if 'features' in batch else None
+            features = batch['features'].to(self.device) if 'features' in batch else None
 
-            pred, _ = self.model(batch['x'], features=features)
+            pred, _ = self.model(batch['x'].to(self.device), features=features)
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)

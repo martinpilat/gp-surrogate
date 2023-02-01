@@ -6,7 +6,7 @@ cd $USER_DIR
 module add conda-modules
 module add gcc
 
-conda create --name gpsurrogate python=3.8
+conda create --name gpsurrogate python=3.10
 conda install numpy pandas scikit-learn
 conda activate gpsurrogate
 

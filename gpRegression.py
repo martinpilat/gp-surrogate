@@ -90,13 +90,19 @@ version = version_info['version']
 parser = argparse.ArgumentParser(description='Run GP with surrogate model')
 parser.add_argument('--problem_number', '-P', type=int, help='The number of problem to start', default=0)
 parser.add_argument('--use_surrogate', '-S', type=str, help='Which surrogate to use (RF, GNN, TNN)', default=None)
+parser.add_argument('--gnn_readout', '-O', type=str, help='Read to use in GNN (concat, root, mean).', default='concat')
+parser.add_argument('--tree_readout', '-T', type=str, help='Read to use in TreeLSTM (root, mean).', default='root')
 parser.add_argument('--use_ranking', '-R', help='Whether to use ranking loss', action='store_true')
 parser.add_argument('--mse_both', '-B', help='Whether to use MSE from both batches with ranking', action='store_true')
 parser.add_argument('--n_cpus', '-C', type=int, default=1)
+parser.add_argument('--device', '-D', type=str, help='Model device (cpu, cuda).', default=None)
 parser.add_argument('--repeats', '-K', type=int, help='How many times to run the algorithm', default=25)
 parser.add_argument('--max_evals', '-E', type=int, help='Maximum number of fitness evaluations', default=10000)
+parser.add_argument('--n_train_epochs', '-N', type=int, help='Number of model train epochs', default=20)
 parser.add_argument('--use_local_search', '-L', help='Use local search algorithm', action='store_true')
 parser.add_argument('--use_auxiliary', '-A', help='Use auxiliary task during training', action='store_true')
+parser.add_argument('--use_features', '-F', help='Use features as input during NN training', action='store_true')
+parser.add_argument('--use_global_node', '-G', help='Use features as input during NN training', action='store_true')
 parser.add_argument('--auxiliary_weight', '-W', type=float, help='The weight for auxiliary task', default=0.1)
 args = parser.parse_args()
 
@@ -129,20 +135,28 @@ sample_ind = toolbox.individual()
 n_features = surrogate.extract_features(sample_ind, pset)
 n_features = n_features.shape[1]
 
+
 surrogate_name = args.use_surrogate
 if surrogate_name == 'GNN':
     surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'readout': 'concat', 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
-                        'include_features': False, 'n_features': None,#n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both,
+    surrogate_kwargs = {'readout': args.gnn_readout, 'use_global_node': args.use_global_node,
+                        'n_epochs': args.n_train_epochs, 'shuffle': False, 'include_features': args.use_features,
+                        'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
                         'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
 if surrogate_name == 'TNN':
+    if args.tree_readout == 'root':
+        use_root = True
+    elif args.tree_readout == 'mean':
+        use_root = False
+    else:
+        raise ValueError(f"Invalid TreeLSTM readout: {args.tree_readout} (allowed: root, mean).")
+
     surrogate_cls = surrogate.TreeLSTMSurrogate
-    surrogate_kwargs = {'use_root': True, 'use_global_node': False, 'n_epochs': 20, 'shuffle': False,
-                        'include_features': False, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 
+    surrogate_kwargs = {'use_root': use_root, 'use_global_node': args.use_global_node, 'n_epochs': args.n_train_epochs,
+                        'shuffle': False, 'include_features': args.use_features, 'n_features': n_features,
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
                         'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}

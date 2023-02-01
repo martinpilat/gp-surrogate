@@ -7,7 +7,9 @@ from gp_surrogate.models.utils import get_layer_sizes, apply_layer_dropout_relu
 
 
 def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-               transform=None, ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.0):
+               transform=None, ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.0, device=None):
+    model = model.to(device)
+
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
     aux_criterion = torch.nn.MSELoss()
@@ -22,6 +24,7 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
         prev = None
         for data in train_loader:
             data = data if transform is None else transform(data)
+            data = data.to(device)
             features = data['features'] if 'features' in data else None
             
             out, aux_out = model(data['x'], features=features, aux_x=data['aux_x'])  # Perform a single forward pass.
@@ -37,8 +40,9 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
 
             if use_auxiliary: 
                 aux_loss = aux_criterion(aux_out, data['aux_y'].flatten())
-                # print(f'loss = {loss}, aux_loss = {aux_loss}')
-                loss += auxiliary_weight*aux_loss
+                if verbose:
+                    print(f'loss = {loss}, aux_loss = {aux_loss}')
+                loss += auxiliary_weight * aux_loss
 
             loss.backward()
             optimizer.step()

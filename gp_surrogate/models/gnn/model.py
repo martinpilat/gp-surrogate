@@ -11,8 +11,7 @@ from torch_geometric.loader import DataLoader
 from gp_surrogate.models.utils import get_layer_sizes, apply_layer_dropout_relu
 
 
-def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, shuffle=True,
-               aux=None):
+def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, shuffle=True, aux=None):
     y_accuracies = y_accuracies if y_accuracies is not None else [None] * len(ind_graphs)
     x_features = x_features if x_features is not None else [None] * len(ind_graphs)
 
@@ -29,9 +28,10 @@ def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, sh
 
 
 def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-              transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0):
-    optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
+              transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0, device=None):
+    model = model.to(device)
 
+    optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = criterion if criterion is not None else torch.nn.MSELoss()
     aux_criterion = torch.nn.MSELoss()
     ranking_criterion = torch.nn.MarginRankingLoss()
@@ -44,6 +44,7 @@ def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, 
         prev = None
         for data in train_loader:
             data = data if transform is None else transform(data)
+            data = data.to(device)
             features = data.features if 'features' in data else None
             aux_in = torch.tensor(data.aux_in) if 'aux_in' in data else None
             aux_out = torch.tensor(data.aux_out) if 'aux_out' in data else None
@@ -56,7 +57,8 @@ def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, 
             # aux loss
             if pred_aux is not None:
                 aux_loss = aux_criterion(aux_out.flatten(), pred_aux.flatten())
-                # print(f'loss = {loss}, aux_loss = {aux_loss}')
+                if verbose:
+                    print(f'loss = {loss}, aux_loss = {aux_loss}')
                 loss += auxiliary_weight * aux_loss
 
             # ranking loss
