@@ -334,3 +334,15 @@ class TreeLSTMSurrogate(SurrogateBase):
             res.append(pred.detach().cpu().numpy())
 
         return np.hstack(res)
+
+
+class RandomSurrogate(SurrogateBase):
+
+    def __init__(self, pset, n_jobs=1, model=None):
+        pass
+
+    def fit(self, inds, fitness, first_gen=False):
+        pass
+
+    def predict(self, inds):
+        return np.random.uniform(0, 1, len(inds))

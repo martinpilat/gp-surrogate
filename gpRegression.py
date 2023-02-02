@@ -109,8 +109,8 @@ args = parser.parse_args()
 print(args)
 
 if args.use_surrogate:
-    if args.use_surrogate not in ['RF', 'TNN', 'GNN']:
-        print('Surrogate type must be one of RF, TNN, or GNN')
+    if args.use_surrogate not in ['RF', 'TNN', 'GNN', 'RAND']:
+        print('Surrogate type must be one of RF, TNN, GNN, or RAND')
         parser.print_help()
 
 bench_number = args.problem_number
@@ -162,6 +162,10 @@ if surrogate_name == 'TNN':
                         'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
+    surrogate_kwargs = {}
+
+if surrogate_name == 'RAND':
+    surrogate_cls = surrogate.RandomSurrogate
     surrogate_kwargs = {}
 
 if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
@@ -377,7 +381,7 @@ def run_all(fn, log_prefix, repeats=25):
     runner = functools.partial(fn, bench=benchmark_description[bench_number])
 
     # run the 25 runs
-    logs = map(runner, range(repeats))
+    logs = pool.map(runner, range(repeats))
     for i, l in enumerate(logs):
         _, log, _ = l
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
