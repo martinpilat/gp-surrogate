@@ -278,8 +278,9 @@ class TreeLSTMSurrogate(SurrogateBase):
         data['x'] = treelstm.batch_tree_input([d['x'] for d in x])
         data['y'] = torch.tensor([d['y'] for d in x])
         data['features'] = torch.vstack([d['features'] for d in x])
-        data['aux_x'] = torch.tensor([d['aux_x'] for d in x])
-        data['aux_y'] = torch.tensor([d['aux_y'] for d in x])
+        if x[0]['aux_x'] is not None:
+            data['aux_x'] = torch.tensor([d['aux_x'] for d in x])
+            data['aux_y'] = torch.tensor([d['aux_y'] for d in x])
         return data
 
     def _get_features(self, inds, first_gen=False):
