@@ -92,6 +92,7 @@ version = version_info['version']
 parser = argparse.ArgumentParser(description='Run GP with surrogate model')
 parser.add_argument('--problem_number', '-P', type=int, help='The number of problem to start', default=0)
 parser.add_argument('--use_surrogate', '-S', type=str, help='Which surrogate to use (RF, GNN, TNN)', default=None)
+parser.add_argument('--filename', type=str, help='Filename prefix', default=None)
 parser.add_argument('--gnn_readout', '-O', type=str, help='Read to use in GNN (concat, root, mean).', default='concat')
 parser.add_argument('--tree_readout', '-T', type=str, help='Read to use in TreeLSTM (root, mean).', default='root')
 parser.add_argument('--use_ranking', '-R', help='Whether to use ranking loss', action='store_true')
@@ -432,11 +433,13 @@ def main():
     #run_all_baseline()
     #run_all_surrogate()
     #run the benchmark on the selected function
+    filename = f"{args.filename}_" if args.filename is not None else ""
     if args.use_surrogate:
         prefix = 'surrogate.' if not args.use_local_search else 'surrogate-ls.'
+        prefix = filename + prefix
         run_all(fn=run_surrogate, log_prefix=prefix + surrogate_name, repeats=args.repeats)
     else:
-        run_all(fn=run_baseline, log_prefix='baseline', repeats=args.repeats)
+        run_all(fn=run_baseline, log_prefix=filename + 'baseline', repeats=args.repeats)
 
 if __name__ == "__main__":
     main()
