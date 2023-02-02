@@ -1,3 +1,5 @@
+import os.path
+
 from deap import tools, base, creator, gp
 import pandas as pd
 import operator
@@ -423,7 +425,9 @@ def run_all_model_tests():
 
 
 def main():
-    
+    if not os.path.exists('output/'):
+        os.mkdir('output')
+    print(os.getcwd())
     #run_all_model_tests()
     #run_all_baseline()
     #run_all_surrogate()
