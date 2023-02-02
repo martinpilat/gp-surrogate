@@ -129,7 +129,8 @@ class NeuralNetSurrogate(SurrogateBase):
     def __init__(self, pset, n_jobs=1, n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None,
                  verbose=False, readout='concat', use_global_node=False, gcn_transform=False,
                  include_features=False, n_features=None, ranking=False, mse_both=False, auxiliary_weight=0.1,
-                 use_auxiliary=False, out_lim=100, sample_size=20, device=None, **kwargs):
+                 use_auxiliary=False, out_lim=100, sample_size=20, device=None,
+                 dropout=0.1, gnn_hidden=32, dense_hidden=32, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
@@ -160,9 +161,14 @@ class NeuralNetSurrogate(SurrogateBase):
         self.use_auxiliary = use_auxiliary
         self.device = device
 
+        self.dropout = dropout
+        self.gnn_hidden = gnn_hidden
+        self.dense_hidden = dense_hidden
+
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features,
                                readout=self.readout, use_auxiliary=self.use_auxiliary, aux_sample_size=self.sample_size,
+                               dropout=self.dropout, n_hidden=self.gnn_hidden, n_hidden_linear=self.dense_hidden,
                                **self.model_kwargs)
 
     def _get_features(self, inds, first_gen=False):

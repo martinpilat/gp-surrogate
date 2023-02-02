@@ -104,6 +104,9 @@ parser.add_argument('--use_auxiliary', '-A', help='Use auxiliary task during tra
 parser.add_argument('--use_features', '-F', help='Use features as input during NN training', action='store_true')
 parser.add_argument('--use_global_node', '-G', help='Use features as input during NN training', action='store_true')
 parser.add_argument('--auxiliary_weight', '-W', type=float, help='The weight for auxiliary task', default=0.1)
+parser.add_argument('--dropout', '-U', type=float, help='Dropout p.', default=0.1)
+parser.add_argument('--gnn_hidden', '-H', type=int, help='GIN hidden size', default=32)
+parser.add_argument('--dense_hidden', '-J', type=int, help='Linear hidden size', default=32)
 args = parser.parse_args()
 
 print(args)
@@ -144,7 +147,8 @@ if surrogate_name == 'GNN':
                         'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden}
 if surrogate_name == 'TNN':
     if args.tree_readout == 'root':
         use_root = True
