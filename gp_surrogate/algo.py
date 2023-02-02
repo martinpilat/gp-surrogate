@@ -7,6 +7,7 @@ import pandas as pd
 import math
 import numpy as np
 import joblib
+import datetime
 
 
 def add_features(ind, pset):
@@ -43,6 +44,8 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 
     print(surrogate_cls)
 
+    start = datetime.datetime.now()
+
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
         logbook.header = ['gen', 'nevals', 'tot_evals'] + (stats.fields if stats else [])
@@ -64,7 +67,7 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 
         # record the stats
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record)
+        logbook.record(gen=0, nevals=len(invalid_ind), elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
         if verbose:
             print(logbook.stream)
 
@@ -163,7 +166,7 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
             record = stats.compile(evaluated) if stats else {}
             if len(invalid_ind) > 0:
                 n_evals += len(invalid_ind) + in_evals
-                logbook.record(gen=gen, nevals=len(invalid_ind) + in_evals, tot_evals=n_evals, **record)
+                logbook.record(gen=gen, nevals=len(invalid_ind) + in_evals, tot_evals=n_evals, elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
             if verbose:
                 print(logbook.stream)
                 if gen%5 == 0:
@@ -202,9 +205,11 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
     print(surrogate_cls)
 
+    start = datetime.datetime.now()
+
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
-        logbook.header = ['gen', 'nevals', 'tot_evals'] + (stats.fields if stats else [])
+        logbook.header = ['gen', 'nevals', 'tot_evals', 'elapsed_time'] + (stats.fields if stats else [])
 
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in population if not ind.fitness.valid]
@@ -223,7 +228,9 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
         # record the stats
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record)
+        logbook.record(gen=0, nevals=len(invalid_ind), 
+                       elapsed_time=(datetime.datetime.now() - start).total_seconds(), 
+                       **record)
         if verbose:
             print(logbook.stream)
 
@@ -299,7 +306,9 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             record = stats.compile(evaluated) if stats else {}
             if len(invalid_ind) > 0:
                 n_evals += len(invalid_ind)
-                logbook.record(gen=gen, nevals=len(invalid_ind), tot_evals=n_evals, **record)
+                logbook.record(gen=gen, nevals=len(invalid_ind),
+                               tot_evals=n_evals, 
+                               elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
             if verbose:
                 print(logbook.stream)
                 if gen % 5 == 0:
@@ -328,10 +337,11 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
     :param n_jobs: the number of jobs use to train the surrogate model and to compute the fitness
     :return: the final population and the log of the run
     """
+    start = datetime.datetime.now()
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
-        logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+        logbook.header = ['gen', 'nevals', 'elapsed_time'] + (stats.fields if stats else [])
 
         # Evaluate the individuals with an invalid fitness
         invalid_ind = [ind for ind in population if not ind.fitness.valid]
@@ -345,7 +355,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
             halloffame.update(population)
 
         record = stats.compile(population) if stats else {}
-        logbook.record(gen=0, nevals=len(invalid_ind), **record)
+        logbook.record(gen=0, nevals=len(invalid_ind), elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
         if verbose:
             print(logbook.stream)
 
@@ -374,7 +384,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
 
             # Append the current generation statistics to the logbook
             record = stats.compile(population) if stats else {}
-            logbook.record(gen=gen, nevals=len(invalid_ind), **record)
+            logbook.record(gen=gen, nevals=len(invalid_ind), elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
             if verbose:
                 print(logbook.stream)
             
@@ -405,9 +415,11 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
 
     print(surrogate_cls)
 
+    start = datetime.datetime.now()
+
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
-        logbook.header = ['gen', 'nevals', 'spear'] + (stats.fields if stats else [])
+        logbook.header = ['gen', 'nevals', 'spear', 'elapsed_time'] + (stats.fields if stats else [])
 
         evals = 0
 
@@ -424,7 +436,7 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
 
         record = stats.compile(population) if stats else {}
         evals += len(invalid_ind)
-        logbook.record(gen=0, nevals=len(invalid_ind), **record)
+        logbook.record(gen=0, nevals=len(invalid_ind), elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
         if verbose:
             print(logbook.stream)
 
@@ -488,7 +500,7 @@ def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
             # Append the current generation statistics to the logbook
             record = stats.compile(population) if stats else {}
             evals += len(invalid_ind)
-            logbook.record(gen=gen, nevals=len(invalid_ind), spear=spear, **record)
+            logbook.record(gen=gen, nevals=len(invalid_ind), spear=spear, elapsed_time=(datetime.datetime.now() - start).total_seconds(), **record)
             if verbose:
                 print(logbook.stream)
 

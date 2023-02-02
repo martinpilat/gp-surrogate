@@ -383,6 +383,9 @@ def run_all(fn, log_prefix, repeats=25):
         pdlog = pd.Series(log.chapters['fitness'].select('min'), index=np.cumsum(log.select('nevals')),
                           name='run_' + str(i))
         pdlogs = pd.concat([pdlogs, pdlog], axis=1)
+        pdlog = pd.Series(log.select('elapsed_time'), index=np.cumsum(log.select('nevals')),
+                          name='time_' + str(i))
+        pdlogs = pd.concat([pdlogs, pdlog], axis=1)
 
     # store the logs
     pdlogs.to_csv(f'output/{log_prefix}.{b_name}.v{version}.csv')
