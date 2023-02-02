@@ -1,22 +1,25 @@
 #!/bin/bash
 
-USER_DIR=/storage/praha1/home/$USER/
+USER_DIR=/storage/plzen1/home/$USER/
 cd $USER_DIR
 
 module add conda-modules
 module add gcc
 
-conda create --name gpsurrogate python=3.10
-conda install numpy pandas scikit-learn
+conda create --prefix $USER_DIR/.conda/envs/gpsurrogate python=3.10
 conda activate gpsurrogate
 
-pip install deap
-pip install typing_extensions
-pip install torch
-pip install torch_geometric
-pip install torch_sparse
-pip install torch_scatter
-pip install gym
-pip install pytorch-tree-lstm
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+conda install pyg -c pyg
+conda install numpy pandas scikit-learn
+
+tmp_dir=$USER_DIR/tmp
+pip_args="--cache-dir=$tmp_dir"
+
+TMPDIR=$tmp_dir pip install "$pip_args" --upgrade pip
+TMPDIR=$tmp_dir pip install "$pip_args" deap 
+TMPDIR=$tmp_dir pip install "$pip_args" typing_extensions
+TMPDIR=$tmp_dir pip install "$pip_args" gym
+TMPDIR=$tmp_dir pip install "$pip_args" pytorch-tree-lstm
 conda install swig
-pip install gym[box2d]
+TMPDIR=$tmp_dir pip install "$pip_args" gym[box2d]
