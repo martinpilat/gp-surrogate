@@ -24,7 +24,7 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
         prev = None
         for data in train_loader:
             data = data if transform is None else transform(data)
-            data = data.to(device)
+            data = {k: v.to(device) for k, v in data.items()}
             features = data['features'] if 'features' in data else None
             
             out, aux_out = model(data['x'], features=features, aux_x=data['aux_x'])  # Perform a single forward pass.
