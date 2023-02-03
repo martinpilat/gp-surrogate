@@ -50,11 +50,13 @@ benchmark_description = [
      'pset': benchmarks.get_primitive_set_for_benchmark('vladislavleva-4', 5)},
     {'name': 'rl_cartpole',
      'env_name': 'CartPole-v1',
+     'env_kwargs': {},
      'variables': 4,
      'output_transform': ot_cartpole,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 4)},
     {'name': 'rl_mountaincar',
      'env_name': 'MountainCar-v0',
+     'env_kwargs': {},
      'variables': 2,
      'output_transform': ot_mountaincar,
      'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
@@ -206,15 +208,16 @@ def eval_rl(individual, environment, output_transform):
         R = 0
         io_feat = []
         for s in range(5):
-            environment.seed(s)
-            obs = environment.reset()
+            terminated = False
+            truncated = False
+            obs, _ = environment.reset(seed=s)
             done = False
-            while not done:
+            while not (terminated or truncated):
                 obs = list(obs)
                 o = func(*obs)
                 action = output_transform(o)
                 io_feat.append((obs, o))
-                obs, r, done, _ = environment.step(action)
+                obs, r, terminated, truncated, _  = environment.step(action)
                 R += float(r)
         if args.use_auxiliary:
             individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
