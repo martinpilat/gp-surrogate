@@ -381,6 +381,8 @@ def run_all(fn, log_prefix, repeats=25):
     """
     import multiprocessing
     import functools
+    import hashlib
+    import json
 
     pool = multiprocessing.Pool(args.n_cpus)
     pdlogs = pd.DataFrame()
@@ -402,7 +404,11 @@ def run_all(fn, log_prefix, repeats=25):
         pdlogs = pd.concat([pdlogs, pdlog], axis=1)
 
     # store the logs
-    pdlogs.to_csv(f'output/{log_prefix}.{b_name}.v{version}.csv')
+    args_hash = hashlib.sha1(str(args).encode('utf8')).hexdigest()[:10]
+    pdlogs.to_csv(f'output/{log_prefix}.{b_name}.v{version}.{args_hash}.csv')
+    with open(f'output/{log_prefix}.{b_name}.v{version}.{args_hash}.json', 'w') as f:
+        json.dump(vars(args), f, indent=1)
+
 
 
 def run_all_model_tests():
