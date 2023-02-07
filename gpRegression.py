@@ -116,6 +116,7 @@ parser.add_argument('--aux_hidden', type=int, help='Hidden layer size for the au
 parser.add_argument('--retrain_every', type=int, help='How often is the surrogate retrained (generations)', default=1)
 parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
 parser.add_argument('--batch_size', type=int, help='Batch size for GNN / TreeLSTM', default=32)
+parser.add_argument('--n_convs', type=int, help='Number of GNN conv layers', default=3)
 args = parser.parse_args()
 
 print(args)
@@ -158,7 +159,7 @@ if surrogate_name == 'GNN':
                         'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
                         'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
                         'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden,
-                        'batch_size': args.batch_size}
+                        'batch_size': args.batch_size, 'n_convs': args.n_convs}
 if surrogate_name == 'TNN':
     if args.tree_readout == 'root':
         use_root = True
