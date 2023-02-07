@@ -120,8 +120,8 @@ args = parser.parse_args()
 print(args)
 
 if args.use_surrogate:
-    if args.use_surrogate not in ['RF', 'TNN', 'GNN', 'RAND']:
-        print('Surrogate type must be one of RF, TNN, GNN, or RAND')
+    if args.use_surrogate not in ['RF', 'TNN', 'GNN', 'RAND', 'IDEAL']:
+        print('Surrogate type must be one of RF, TNN, GNN, RAND, or IDEAL')
         parser.print_help()
 
 bench_number = args.problem_number
@@ -148,50 +148,6 @@ n_features = n_features.shape[1]
 
 
 surrogate_name = args.use_surrogate
-if surrogate_name == 'GNN':
-    surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'readout': args.gnn_readout, 'use_global_node': args.use_global_node,
-                        'n_epochs': args.n_train_epochs, 'shuffle': False, 'include_features': args.use_features,
-                        'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
-                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden}
-if surrogate_name == 'TNN':
-    if args.tree_readout == 'root':
-        use_root = True
-    elif args.tree_readout == 'mean':
-        use_root = False
-    else:
-        raise ValueError(f"Invalid TreeLSTM readout: {args.tree_readout} (allowed: root, mean).")
-
-    surrogate_cls = surrogate.TreeLSTMSurrogate
-    surrogate_kwargs = {'use_root': use_root, 'use_global_node': args.use_global_node, 'n_epochs': args.n_train_epochs,
-                        'shuffle': False, 'include_features': args.use_features, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
-                        'aux_hidden': args.aux_hidden, 'dropout': args.dropout, 'tnn_hidden':args.gnn_hidden, 'dense_hidden':args.dense_hidden}
-if surrogate_name == 'RF':
-    surrogate_cls = surrogate.FeatureSurrogate
-    surrogate_kwargs = {}
-
-if surrogate_name == 'RAND':
-    surrogate_cls = surrogate.RandomSurrogate
-    surrogate_kwargs = {}
-
-if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
-    surrogate_name += '-R1'
-
-    if args.mse_both:
-        surrogate_name += '-B'
-
-if args.use_local_search:
-    surrogate_name += '-LS'
-
-if args.use_auxiliary:
-    surrogate_name += '-AUX'
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -228,6 +184,57 @@ def eval_rl(individual, environment, output_transform):
         return -R/5,
     except OverflowError:
         return 100000.0,
+
+
+if surrogate_name == 'GNN':
+    surrogate_cls = surrogate.NeuralNetSurrogate
+    surrogate_kwargs = {'readout': args.gnn_readout, 'use_global_node': args.use_global_node,
+                        'n_epochs': args.n_train_epochs, 'shuffle': False, 'include_features': args.use_features,
+                        'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden}
+if surrogate_name == 'TNN':
+    if args.tree_readout == 'root':
+        use_root = True
+    elif args.tree_readout == 'mean':
+        use_root = False
+    else:
+        raise ValueError(f"Invalid TreeLSTM readout: {args.tree_readout} (allowed: root, mean).")
+
+    surrogate_cls = surrogate.TreeLSTMSurrogate
+    surrogate_kwargs = {'use_root': use_root, 'use_global_node': args.use_global_node, 'n_epochs': args.n_train_epochs,
+                        'shuffle': False, 'include_features': args.use_features, 'n_features': n_features,
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'aux_hidden': args.aux_hidden, 'dropout': args.dropout, 'tnn_hidden':args.gnn_hidden, 'dense_hidden':args.dense_hidden}
+
+if surrogate_name == 'RF':
+    surrogate_cls = surrogate.FeatureSurrogate
+    surrogate_kwargs = {}
+
+if surrogate_name == 'RAND':
+    surrogate_cls = surrogate.RandomSurrogate
+    surrogate_kwargs = {}
+
+if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
+    surrogate_name += '-R1'
+
+    if args.mse_both:
+        surrogate_name += '-B'
+
+if args.use_local_search:
+    surrogate_name += '-LS'
+
+if args.use_auxiliary:
+    surrogate_name += '-AUX'
+
+if surrogate_name == 'IDEAL':
+    surrogate_cls = None # surrogate will be set later, once the fitness is defined
+    surrogate_kwargs = {}
 
 # register the selection and genetic operators - tournament selection and, one point crossover and sub-tree mutation
 toolbox.register("select", tools.selTournament, tournsize=3)
@@ -334,6 +341,9 @@ def run_surrogate(i, bench):
     :return: population in the last generation, log of the run, and the hall-of-fame,
     """
 
+    global surrogate_cls
+    global surrogate_kwargs
+
     # set seed to the number of the run
     random.seed(i)
     np.random.seed(i)
@@ -351,6 +361,10 @@ def run_surrogate(i, bench):
         data = data.drop('y', axis=1)
         x = data.values
         toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
+
+    if args.use_surrogate == 'IDEAL':
+        surrogate_cls = surrogate.IdealSurrogate
+        surrogate_kwargs = {'fn': lambda x: toolbox.evaluate(x)[0]}
 
     # create the initial population
     pop = toolbox.population(n=200)

@@ -352,3 +352,14 @@ class RandomSurrogate(SurrogateBase):
 
     def predict(self, inds):
         return np.random.uniform(0, 1, len(inds))
+
+class IdealSurrogate(SurrogateBase):
+
+    def __init__(self, pset, n_jobs=1, fn=None):
+        self.fn = fn
+
+    def fit(self, inds, fitness, first_gen=False):
+        pass
+
+    def predict(self, inds):
+        return [self.fn(ind) for ind in inds]
