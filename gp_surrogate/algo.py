@@ -22,7 +22,8 @@ def add_features(ind, pset):
 
 def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
-                        scale=False, train_fit_lim=1000, surrogate_cls=None, surrogate_kwargs=None):
+                        scale=False, train_fit_lim=1000, max_train_size=5000, 
+                        retrain_every=1, min_archive_size=1000, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -72,6 +73,8 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
             print(logbook.stream)
 
         gen = 1
+        clf = None
+        last_train = 0
         # Begin the generational process
         while n_evals < max_evals:
 
@@ -83,23 +86,26 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 
             in_evals = 0
 
-            if len(archive) > 1000:
+            if len(archive) > min_archive_size:
                 
-                train = archive
-                if len(train) > 5000:
-                    train = random.sample(archive, 5000)
+                if clf is None or gen - last_train >= retrain_every:
+                
+                    train = archive
+                    if len(train) > max_train_size:
+                        train = random.sample(archive, max_train_size)
 
-                features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
-                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
+                    features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
+                    targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
 
-                if scale:
-                    a = min(targets)
-                    b = max(targets)
-                    targets = [math.log(1+(t-a)) for t in targets]
+                    if scale:
+                        a = min(targets)
+                        b = max(targets)
+                        targets = [math.log(1+(t-a)) for t in targets]
 
                 # build the surrogate model (random forest regressor)
-                clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
-                clf.fit(features, targets, first_gen=gen == 1)
+                    clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
+                    clf.fit(features, targets, first_gen=gen == 1)
+                    last_train = gen
 
                 in_par_ix = list(range(len(offspring)))
                 random.shuffle(in_par_ix)
@@ -183,7 +189,8 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 
 def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
-                        scale=False, train_fit_lim=1000, surrogate_cls=None, surrogate_kwargs=None):
+                        scale=False, train_fit_lim=1000, max_train_size=5000, retrain_every=1,
+                        min_archive_size=1000, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -235,6 +242,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             print(logbook.stream)
 
         gen = 1
+        clf = None
+        last_train = 0
         # Begin the generational process
         while n_evals < max_evals:
 
@@ -245,23 +254,27 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             # Vary the pool of individuals
             offspring = varAnd(offspring, toolbox, cxpb, mutpb)
 
-            if len(archive) > 1000:
+            if len(archive) > min_archive_size:
 
-                train = archive
-                if len(train) > 5000:
-                    train = random.sample(archive, 5000)
+                if clf is None or gen - last_train >= retrain_every:
+                    last_train = gen
+                    print(f'Gen: {gen} retraining')
+                    train = archive
+                    if len(train) > max_train_size:
+                        print(f'Sampled from archive: archive size = {len(train)} {len(archive)}')
+                        train = random.sample(archive, max_train_size)
 
-                features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
-                targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
+                    features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
+                    targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
 
-                if scale:
-                    a = min(targets)
-                    b = max(targets)
-                    targets = [math.log(1+(t-a)) for t in targets]
+                    if scale:
+                        a = min(targets)
+                        b = max(targets)
+                        targets = [math.log(1+(t-a)) for t in targets]
 
-                # build the surrogate model (random forest regressor)
-                clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
-                clf.fit(features, targets, first_gen=gen == 1)
+                    # build the surrogate model (random forest regressor)
+                    clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
+                    clf.fit(features, targets, first_gen=gen == 1)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring if not ind.fitness.valid]

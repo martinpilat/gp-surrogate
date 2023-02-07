@@ -112,6 +112,8 @@ parser.add_argument('--auxiliary_weight', '-W', type=float, help='The weight for
 parser.add_argument('--dropout', '-U', type=float, help='Dropout p.', default=0.1)
 parser.add_argument('--gnn_hidden', '-H', type=int, help='GIN hidden size', default=32)
 parser.add_argument('--dense_hidden', '-J', type=int, help='Linear hidden size', default=32)
+parser.add_argument('--retrain_every', type=int, help='How often is the surrogate retrained (generations)', default=1)
+parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
 args = parser.parse_args()
 
 print(args)
@@ -366,12 +368,14 @@ def run_surrogate(i, bench):
         pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                                  stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
                                                  train_fit_lim=train_fit_lim,
-                                                 surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                 surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs,
+                                                 retrain_every=args.retrain_every, max_train_size=args.max_train_size)
     else: 
         pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                             stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
                                             train_fit_lim=train_fit_lim,
-                                            surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                            surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs,
+                                            retrain_every=args.retrain_every, max_train_size=args.max_train_size)
 
     return pop, log, hof
 
