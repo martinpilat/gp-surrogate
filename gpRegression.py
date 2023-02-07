@@ -115,6 +115,8 @@ parser.add_argument('--dense_hidden', '-J', type=int, help='Linear hidden size',
 parser.add_argument('--aux_hidden', type=int, help='Hidden layer size for the aux network', default=32)
 parser.add_argument('--retrain_every', type=int, help='How often is the surrogate retrained (generations)', default=1)
 parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
+parser.add_argument('--batch_size', type=int, help='Batch size for GNN / TreeLSTM', default=32)
+parser.add_argument('--n_convs', type=int, help='Number of GNN conv layers', default=3)
 args = parser.parse_args()
 
 print(args)
@@ -148,6 +150,56 @@ n_features = n_features.shape[1]
 
 
 surrogate_name = args.use_surrogate
+if surrogate_name == 'GNN':
+    surrogate_cls = surrogate.NeuralNetSurrogate
+    surrogate_kwargs = {'readout': args.gnn_readout, 'use_global_node': args.use_global_node,
+                        'n_epochs': args.n_train_epochs, 'shuffle': False, 'include_features': args.use_features,
+                        'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden,
+                        'batch_size': args.batch_size, 'n_convs': args.n_convs}
+if surrogate_name == 'TNN':
+    if args.tree_readout == 'root':
+        use_root = True
+    elif args.tree_readout == 'mean':
+        use_root = False
+    else:
+        raise ValueError(f"Invalid TreeLSTM readout: {args.tree_readout} (allowed: root, mean).")
+
+    surrogate_cls = surrogate.TreeLSTMSurrogate
+    surrogate_kwargs = {'use_root': use_root, 'use_global_node': args.use_global_node, 'n_epochs': args.n_train_epochs,
+                        'shuffle': False, 'include_features': args.use_features, 'n_features': n_features,
+                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
+                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
+                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'aux_hidden': args.aux_hidden, 'dropout': args.dropout, 'tnn_hidden':args.gnn_hidden, 'dense_hidden':args.dense_hidden,
+                        'batch_size': args.batch_size}
+if surrogate_name == 'RF':
+    surrogate_cls = surrogate.FeatureSurrogate
+    surrogate_kwargs = {}
+
+if surrogate_name == 'RAND':
+    surrogate_cls = surrogate.RandomSurrogate
+    surrogate_kwargs = {}
+
+if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
+    surrogate_name += '-R1'
+
+    if args.mse_both:
+        surrogate_name += '-B'
+
+if args.use_local_search:
+    surrogate_name += '-LS'
+
+if args.use_auxiliary:
+    surrogate_name += '-AUX'
+
+if surrogate_name == 'IDEAL':
+    surrogate_cls = None # surrogate will be set later, once the fitness is defined
+    surrogate_kwargs = {}
 
 # define the fitness function (log10 of the rmse or 1000 if overflow occurs)
 def eval_symb_reg(individual, points, values):
@@ -184,57 +236,6 @@ def eval_rl(individual, environment, output_transform):
         return -R/5,
     except OverflowError:
         return 100000.0,
-
-
-if surrogate_name == 'GNN':
-    surrogate_cls = surrogate.NeuralNetSurrogate
-    surrogate_kwargs = {'readout': args.gnn_readout, 'use_global_node': args.use_global_node,
-                        'n_epochs': args.n_train_epochs, 'shuffle': False, 'include_features': args.use_features,
-                        'n_features': n_features, 'ranking': args.use_ranking, 'mse_both': args.mse_both,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
-                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden}
-if surrogate_name == 'TNN':
-    if args.tree_readout == 'root':
-        use_root = True
-    elif args.tree_readout == 'mean':
-        use_root = False
-    else:
-        raise ValueError(f"Invalid TreeLSTM readout: {args.tree_readout} (allowed: root, mean).")
-
-    surrogate_cls = surrogate.TreeLSTMSurrogate
-    surrogate_kwargs = {'use_root': use_root, 'use_global_node': args.use_global_node, 'n_epochs': args.n_train_epochs,
-                        'shuffle': False, 'include_features': args.use_features, 'n_features': n_features,
-                        'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
-                        'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
-                        'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
-                        'aux_hidden': args.aux_hidden, 'dropout': args.dropout, 'tnn_hidden':args.gnn_hidden, 'dense_hidden':args.dense_hidden}
-
-if surrogate_name == 'RF':
-    surrogate_cls = surrogate.FeatureSurrogate
-    surrogate_kwargs = {}
-
-if surrogate_name == 'RAND':
-    surrogate_cls = surrogate.RandomSurrogate
-    surrogate_kwargs = {}
-
-if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
-    surrogate_name += '-R1'
-
-    if args.mse_both:
-        surrogate_name += '-B'
-
-if args.use_local_search:
-    surrogate_name += '-LS'
-
-if args.use_auxiliary:
-    surrogate_name += '-AUX'
-
-if surrogate_name == 'IDEAL':
-    surrogate_cls = None # surrogate will be set later, once the fitness is defined
-    surrogate_kwargs = {}
 
 # register the selection and genetic operators - tournament selection and, one point crossover and sub-tree mutation
 toolbox.register("select", tools.selTournament, tournsize=3)
