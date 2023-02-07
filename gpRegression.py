@@ -114,6 +114,7 @@ parser.add_argument('--gnn_hidden', '-H', type=int, help='GIN hidden size', defa
 parser.add_argument('--dense_hidden', '-J', type=int, help='Linear hidden size', default=32)
 parser.add_argument('--retrain_every', type=int, help='How often is the surrogate retrained (generations)', default=1)
 parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
+parser.add_argument('--batch_size', type=int, help='Batch size for GNN / TreeLSTM', default=32)
 args = parser.parse_args()
 
 print(args)
@@ -155,7 +156,8 @@ if surrogate_name == 'GNN':
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight, 
                         'n_aux_inputs': benchmark_description[bench_number]['variables'], 'device': args.device,
                         'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
-                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden}
+                        'dropout': args.dropout, 'gnn_hidden': args.gnn_hidden, 'dense_hidden': args.dense_hidden,
+                        'batch_size': args.batch_size}
 if surrogate_name == 'TNN':
     if args.tree_readout == 'root':
         use_root = True
@@ -170,7 +172,8 @@ if surrogate_name == 'TNN':
                         'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'batch_size': args.batch_size}
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}
