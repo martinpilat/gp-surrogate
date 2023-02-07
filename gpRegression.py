@@ -110,8 +110,9 @@ parser.add_argument('--use_features', '-F', help='Use features as input during N
 parser.add_argument('--use_global_node', '-G', help='Use features as input during NN training', action='store_true')
 parser.add_argument('--auxiliary_weight', '-W', type=float, help='The weight for auxiliary task', default=0.1)
 parser.add_argument('--dropout', '-U', type=float, help='Dropout p.', default=0.1)
-parser.add_argument('--gnn_hidden', '-H', type=int, help='GIN hidden size', default=32)
+parser.add_argument('--gnn_hidden', '-H', type=int, help='GIN/TreeLSTM hidden size', default=32)
 parser.add_argument('--dense_hidden', '-J', type=int, help='Linear hidden size', default=32)
+parser.add_argument('--aux_hidden', type=int, help='Hidden layer size for the aux network', default=32)
 parser.add_argument('--retrain_every', type=int, help='How often is the surrogate retrained (generations)', default=1)
 parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
 args = parser.parse_args()
@@ -170,7 +171,8 @@ if surrogate_name == 'TNN':
                         'ranking': args.use_ranking, 'mse_both': args.mse_both, 'device': args.device,
                         'use_auxiliary': args.use_auxiliary, 'auxiliary_weight': args.auxiliary_weight,
                         'n_aux_inputs': benchmark_description[bench_number]['variables'],
-                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1}
+                        'n_aux_outputs': 2 if 'lunar' in benchmark_description[bench_number]['name'] else 1,
+                        'aux_hidden': args.aux_hidden, 'dropout': args.dropout, 'tnn_hidden':args.gnn_hidden, 'dense_hidden':args.dense_hidden}
 if surrogate_name == 'RF':
     surrogate_cls = surrogate.FeatureSurrogate
     surrogate_kwargs = {}

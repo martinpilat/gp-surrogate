@@ -258,10 +258,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
                 if clf is None or gen - last_train >= retrain_every:
                     last_train = gen
-                    print(f'Gen: {gen} retraining')
                     train = archive
                     if len(train) > max_train_size:
-                        print(f'Sampled from archive: archive size = {len(train)} {len(archive)}')
                         train = random.sample(archive, max_train_size)
 
                     features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]

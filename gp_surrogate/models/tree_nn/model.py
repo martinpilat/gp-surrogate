@@ -64,14 +64,14 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
 
 
 class TreeLSTMModel(torch.nn.Module):
-    def __init__(self, n_node_features, n_hidden=32, n_lin=2, dropout=0.1, use_root=False, n_features=None,
+    def __init__(self, n_node_features, tnn_hidden=32, n_lin=2, dropout=0.1, use_root=False, n_features=None,
                  use_auxiliary=False, auxiliary_weight=0.1, n_aux_inputs=None, n_aux_outputs=None,
-                 aux_hidden=32, aux_sample_size=20):
+                 aux_hidden=32, aux_sample_size=20, dense_hidden=32):
 
         super().__init__()
         self.dropout = dropout
 
-        self.lstm = treelstm.TreeLSTM(n_node_features, n_hidden)
+        self.lstm = treelstm.TreeLSTM(n_node_features, tnn_hidden)
         self.concat_lin = None
         self.aux_concat_lin = None
         self.aux_lins = None
@@ -82,13 +82,13 @@ class TreeLSTMModel(torch.nn.Module):
 
         n_features = n_features if n_features is not None else 0
 
-        lin_sizes = get_layer_sizes(n_lin, n_hidden, first_size=n_hidden + n_features, last_size=1)
+        lin_sizes = get_layer_sizes(n_lin, dense_hidden, first_size=tnn_hidden + n_features, last_size=1)
         self.lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
         self.use_root = use_root
 
         if use_auxiliary:
-            lin_sizes = get_layer_sizes(n_lin, aux_hidden, first_size=n_hidden + n_features + n_aux_inputs,
+            lin_sizes = get_layer_sizes(n_lin, aux_hidden, first_size=tnn_hidden + n_features + n_aux_inputs,
                                         last_size=n_aux_outputs)
             self.aux_lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
