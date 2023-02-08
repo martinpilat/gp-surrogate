@@ -126,11 +126,11 @@ class FeatureSurrogate(SurrogateBase):
 
 
 class NeuralNetSurrogate(SurrogateBase):
-    def __init__(self, pset, n_jobs=1, n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None,
+    def __init__(self, pset, n_jobs=1, n_epochs=20, batch_size=128, shuffle=False, optimizer=None, loss=None,
                  verbose=False, readout='concat', use_global_node=False, gcn_transform=False,
                  include_features=False, n_features=None, ranking=False, mse_both=False, auxiliary_weight=0.1,
                  use_auxiliary=False, out_lim=100, sample_size=20, device=None, n_convs=3,
-                 dropout=0.1, gnn_hidden=32, dense_hidden=32, **kwargs):
+                 dropout=0.1, gnn_hidden=64, dense_hidden=64, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
