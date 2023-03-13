@@ -20,10 +20,18 @@ def add_features(ind, pset):
     ind.features = surrogate.extract_features(ind, pset)
     return ind
 
+
+def save_training_data(gen, pop, fits, filename):
+    import pickle
+    with open(f'{filename}.{gen}.pkl', 'wb') as f:
+        pickle.dump((pop, fits), f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
                         scale=False, train_fit_lim=1000, max_train_size=5000, 
-                        retrain_every=1, min_archive_size=1000, surrogate_cls=None, surrogate_kwargs=None):
+                        retrain_every=1, min_archive_size=1000, save_data=False, 
+                        surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -58,6 +66,8 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
             ind.fitness.values = fit
             ind.estimate = False
             add_features(ind, pset)
+        if save_data:
+            save_training_data(0, invalid_ind, save_data)
 
         # add the evaluated individuals into archive
         archive = invalid_ind
@@ -145,7 +155,8 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                 for i, o in zip(in_par_ix, in_par):
                     offspring[i] = o
                 
-            # prepare the rest of the individuals for evaluation with the real fitness
+            # prepare the rest of the individuals for evaluation with the real fitness 
+            # (all individuals should have invalid fitness if the local search was performed)
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
             # evaluate invalid individuals with the real fitness
             fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
@@ -153,6 +164,9 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                 ind.fitness.values = fit
                 ind.estimate = False
                 add_features(ind, pset)
+            
+            if save_data:
+                save_training_data(gen, invalid_ind, fitnesses, save_data)
 
             assert all(not ind.estimate for ind in offspring)
 
@@ -190,7 +204,7 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
 def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                         stats=None, halloffame=None, verbose=__debug__, n_jobs=-1,
                         scale=False, train_fit_lim=1000, max_train_size=5000, retrain_every=1,
-                        min_archive_size=1000, surrogate_cls=None, surrogate_kwargs=None):
+                        min_archive_size=1000, save_data=False, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the surrogate version of the ea
 
     :param population: the initial population
@@ -225,6 +239,9 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             ind.fitness.values = fit
             ind.estimate = False
             add_features(ind, pset)
+
+        if save_data:
+            save_training_data(0, invalid_ind, fitnesses, save_data)
 
         # add the evaluated individuals into archive
         archive = invalid_ind
@@ -280,7 +297,6 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 pred_x = [ind for ind in invalid_ind]
                 preds = clf.predict(pred_x)
 
-                # real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
                 # import scipy.stats
                 # print(scipy.stats.spearmanr(preds, real_preds).correlation)
 
@@ -300,6 +316,10 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 ind.fitness.values = fit
                 ind.estimate = False
                 add_features(ind, pset)
+
+            if save_data:
+                real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in offspring)
+                save_training_data(gen, offspring, real_preds, save_data)
 
             # add the evaluated individual into the archive
             archive = archive+invalid_ind
@@ -334,7 +354,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
 
 def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
-                       halloffame=None, verbose=__debug__, n_jobs=1):
+                       halloffame=None, verbose=__debug__, save_data=False, n_jobs=1):
     """ Performs the baseline version of the ea
 
     :param population: the initial population
@@ -360,6 +380,9 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
+        if save_data:
+            save_training_data(0, invalid_ind, fitnesses, save_data)
+
         n_evals = len(invalid_ind)
 
         if halloffame is not None:
@@ -384,6 +407,9 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
 
+            if save_data:
+                save_training_data(gen, invalid_ind, fitnesses, save_data)            
+
             n_evals += len(invalid_ind)
 
             # Update the hall of fame with the generated individuals
@@ -405,7 +431,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
 
 
 def ea_baseline_model(population, toolbox, cxpb, mutpb, ngen, pset, stats=None,
-                       halloffame=None, verbose=__debug__, n_jobs=1, surrogate_cls=None, surrogate_kwargs=None):
+                       halloffame=None, verbose=__debug__, n_jobs=1, save_data=False, surrogate_cls=None, surrogate_kwargs=None):
     """ Performs the tests of the model
 
     :param population: the initial population

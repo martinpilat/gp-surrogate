@@ -11,80 +11,9 @@ import json
 import gym
 
 # decription of the benchmarks
-from gp_surrogate import surrogate, benchmarks, algo
+from gp_surrogate import surrogate, algo, benchmarks
 
-
-def ot_cartpole(x):
-    return 1 if x > 0 else 0
-
-def ot_mountaincar(x):
-    return 0 if x < -1 else 2 if x > 1 else 1
-
-def ot_acrobot(x):
-    return -1 if x < -1 else 1 if x > 1 else 0
-
-def ot_pendulum(x):
-    return [x]
-
-def ot_mountaincarcont(x):
-    return [min(max(x, -1), 1)]
-
-def ot_lunarlander(x):
-    return list(x)
-
-benchmark_description = [
-    {'name': 'keijzer-6',
-     'variables': 1,
-     'pset': benchmarks.get_primitive_set_for_benchmark('keijzer-6', 1)},
-    {'name': 'korns-12',
-     'variables': 5,
-     'pset': benchmarks.get_primitive_set_for_benchmark('korns-12', 5)},
-    {'name': 'pagie-1',
-     'variables': 2,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
-    {'name': 'nguyen-7',
-     'variables': 1,
-     'pset': benchmarks.get_primitive_set_for_benchmark('nguyen-7', 1)},
-    {'name': 'vladislavleva-4',
-     'variables': 5,
-     'pset': benchmarks.get_primitive_set_for_benchmark('vladislavleva-4', 5)},
-    {'name': 'rl_cartpole',
-     'env_name': 'CartPole-v1',
-     'env_kwargs': {},
-     'variables': 4,
-     'output_transform': ot_cartpole,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 4)},
-    {'name': 'rl_mountaincar',
-     'env_name': 'MountainCar-v0',
-     'env_kwargs': {},
-     'variables': 2,
-     'output_transform': ot_mountaincar,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
-    {'name': 'rl_acrobot',
-     'env_name': 'Acrobot-v1',
-     'env_kwargs': {},
-     'variables': 6,
-     'output_transform': ot_acrobot,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 6)},
-    {'name': 'rl_pendulum',
-     'env_name': 'Pendulum-v1',
-     'env_kwargs': {},
-     'variables': 3,
-     'output_transform': ot_pendulum,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 3)},
-    {'name': 'rl_mountaincarcontinuous',
-     'env_name': 'MountainCarContinuous-v0',
-     'env_kwargs': {},
-     'variables': 2,
-     'output_transform': ot_mountaincarcont,
-     'pset': benchmarks.get_primitive_set_for_benchmark('pagie-1', 2)},
-    {'name': 'rl_lunarlander',
-     'env_name': 'LunarLanderContinuous-v2',
-     'env_kwargs': {},
-     'variables': 8,
-     'output_transform': ot_lunarlander,
-     'pset': benchmarks.get_primitive_set_for_benchmark('lander', 8)} 
-]
+benchmark_description = benchmarks.benchmark_description
 
 version_info = json.load(open('version.json', 'r'))
 version = version_info['version']
@@ -117,6 +46,7 @@ parser.add_argument('--retrain_every', type=int, help='How often is the surrogat
 parser.add_argument('--max_train_size', type=int, help='The maximum size of the training set sampled from the archive', default=5000)
 parser.add_argument('--batch_size', type=int, help='Batch size for GNN / TreeLSTM', default=32)
 parser.add_argument('--n_convs', type=int, help='Number of GNN conv layers', default=3)
+parser.add_argument('--save_training_data', help='Save data for training of surrogates', action='store_true')
 args = parser.parse_args()
 
 print(args)
@@ -191,10 +121,10 @@ if args.use_ranking and surrogate_name in ['GNN', 'TNN']:
     if args.mse_both:
         surrogate_name += '-B'
 
-if args.use_local_search:
+if surrogate_name and args.use_local_search:
     surrogate_name += '-LS'
 
-if args.use_auxiliary:
+if surrogate_name and args.use_auxiliary:
     surrogate_name += '-AUX'
 
 if surrogate_name == 'IDEAL':
@@ -248,7 +178,7 @@ toolbox.decorate("mate", gp.staticLimit(key=operator.attrgetter("height"), max_v
 toolbox.decorate("mutate", gp.staticLimit(key=operator.attrgetter("height"), max_value=17))
 
 
-def run_baseline(i, bench):
+def run_baseline(i, bench, out_prefix=""):
     """ Executes one run of the baseline algorithm
 
     :param i: number of the run
@@ -284,14 +214,20 @@ def run_baseline(i, bench):
     mstats.register("min", np.min)
     mstats.register("max", np.max)
 
+    save_training_data = args.save_training_data
+    if args.save_training_data:
+        os.makedirs('train_data', exist_ok=True)
+        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+
     # run the baseline algorithm
     pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, args.max_evals,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1)
+                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1, 
+                                       save_data=save_training_data)
 
     return pop, log, hof
 
 
-def run_model_test(i, bench):
+def run_model_test(i, bench, out_prefix=""):
     """ Executes one run of the model tests
 
     :param i: number of the run
@@ -327,14 +263,20 @@ def run_model_test(i, bench):
     mstats.register("min", np.min)
     mstats.register("max", np.max)
 
+    save_training_data = args.save_training_data
+    if args.save_training_data:
+        os.mkdir('training_data', exists_ok=True)
+        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
                                                 stats=mstats, halloffame=hof, verbose=True, n_jobs=1, pset=pset,
-                                                surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs)
+                                                surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs, 
+                                                save_data=save_training_data)
 
     return pop, log, hof, feat_imp
 
-def run_surrogate(i, bench):
+def run_surrogate(i, bench, out_prefix=""):
     """ Executes one run of the surrogate algorithm
 
     :param i: number of the run
@@ -380,19 +322,26 @@ def run_surrogate(i, bench):
     mstats.register("min", np.min)
     mstats.register("max", np.max)
 
+    save_training_data = args.save_training_data
+    if args.save_training_data:
+        os.makedirs('train_data', exist_ok=True)
+        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+
     # run the surrogate algorithm
     if args.use_local_search :
         pop, log = algo.ea_surrogate_localsearch(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                                  stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
                                                  train_fit_lim=train_fit_lim,
                                                  surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs,
-                                                 retrain_every=args.retrain_every, max_train_size=args.max_train_size)
+                                                 retrain_every=args.retrain_every, max_train_size=args.max_train_size,
+                                                 save_data=save_training_data)
     else: 
         pop, log = algo.ea_surrogate_simple(pop, toolbox, 0.2, 0.7, args.max_evals, pset=pset,
                                             stats=mstats, halloffame=hof, verbose=True, n_jobs=1, scale=scale,
                                             train_fit_lim=train_fit_lim,
                                             surrogate_cls=surrogate_cls, surrogate_kwargs=surrogate_kwargs,
-                                            retrain_every=args.retrain_every, max_train_size=args.max_train_size)
+                                            retrain_every=args.retrain_every, max_train_size=args.max_train_size,
+                                            save_data=save_training_data)
 
     return pop, log, hof
 
@@ -411,7 +360,10 @@ def run_all(fn, log_prefix, repeats=25):
     # get the name of the benchmark
     b_name = benchmark_description[bench_number]['name']
 
-    runner = functools.partial(fn, bench=benchmark_description[bench_number])
+    args_hash = hashlib.sha1(str(args).encode('utf8')).hexdigest()[:10]
+    out_prefix = f'{log_prefix}.{b_name}.v{version}.{args_hash}'
+
+    runner = functools.partial(fn, bench=benchmark_description[bench_number], out_prefix=out_prefix)
 
     # run the 25 runs
     logs = pool.map(runner, range(repeats))
@@ -425,9 +377,8 @@ def run_all(fn, log_prefix, repeats=25):
         pdlogs = pd.concat([pdlogs, pdlog], axis=1)
 
     # store the logs
-    args_hash = hashlib.sha1(str(args).encode('utf8')).hexdigest()[:10]
-    pdlogs.to_csv(f'output/{log_prefix}.{b_name}.v{version}.{args_hash}.csv')
-    with open(f'output/{log_prefix}.{b_name}.v{version}.{args_hash}.json', 'w') as f:
+    pdlogs.to_csv(f'output/{out_prefix}.csv')
+    with open(f'output/{out_prefix}.json', 'w') as f:
         json.dump(vars(args), f, indent=1)
 
 

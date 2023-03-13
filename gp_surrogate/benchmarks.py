@@ -135,3 +135,77 @@ def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
         pset.addPrimitive(sin, [float], float)
         pset.addPrimitive(concat, [float, float], TupleOut)
         return pset
+
+
+def ot_cartpole(x):
+    return 1 if x > 0 else 0
+
+def ot_mountaincar(x):
+    return 0 if x < -1 else 2 if x > 1 else 1
+
+def ot_acrobot(x):
+    return -1 if x < -1 else 1 if x > 1 else 0
+
+def ot_pendulum(x):
+    return [x]
+
+def ot_mountaincarcont(x):
+    return [min(max(x, -1), 1)]
+
+def ot_lunarlander(x):
+    return list(x)
+
+
+benchmark_description = [
+    {'name': 'keijzer-6',
+     'variables': 1,
+     'pset': get_primitive_set_for_benchmark('keijzer-6', 1)},
+    {'name': 'korns-12',
+     'variables': 5,
+     'pset': get_primitive_set_for_benchmark('korns-12', 5)},
+    {'name': 'pagie-1',
+     'variables': 2,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 2)},
+    {'name': 'nguyen-7',
+     'variables': 1,
+     'pset': get_primitive_set_for_benchmark('nguyen-7', 1)},
+    {'name': 'vladislavleva-4',
+     'variables': 5,
+     'pset': get_primitive_set_for_benchmark('vladislavleva-4', 5)},
+    {'name': 'rl_cartpole',
+     'env_name': 'CartPole-v1',
+     'env_kwargs': {},
+     'variables': 4,
+     'output_transform': ot_cartpole,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 4)},
+    {'name': 'rl_mountaincar',
+     'env_name': 'MountainCar-v0',
+     'env_kwargs': {},
+     'variables': 2,
+     'output_transform': ot_mountaincar,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 2)},
+    {'name': 'rl_acrobot',
+     'env_name': 'Acrobot-v1',
+     'env_kwargs': {},
+     'variables': 6,
+     'output_transform': ot_acrobot,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 6)},
+    {'name': 'rl_pendulum',
+     'env_name': 'Pendulum-v1',
+     'env_kwargs': {},
+     'variables': 3,
+     'output_transform': ot_pendulum,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 3)},
+    {'name': 'rl_mountaincarcontinuous',
+     'env_name': 'MountainCarContinuous-v0',
+     'env_kwargs': {},
+     'variables': 2,
+     'output_transform': ot_mountaincarcont,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 2)},
+    {'name': 'rl_lunarlander',
+     'env_name': 'LunarLanderContinuous-v2',
+     'env_kwargs': {},
+     'variables': 8,
+     'output_transform': ot_lunarlander,
+     'pset': get_primitive_set_for_benchmark('lander', 8)} 
+]
