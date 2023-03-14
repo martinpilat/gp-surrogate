@@ -155,6 +155,12 @@ def ot_mountaincarcont(x):
 def ot_lunarlander(x):
     return list(x)
 
+def ot_swimmer(x):
+    return [min(max(xx, -1), 1) for xx in list(x)]
+
+def ot_invpendulum(x):
+    return [min(max(x, -3), 3)]
+
 
 benchmark_description = [
     {'name': 'keijzer-6',
@@ -207,5 +213,17 @@ benchmark_description = [
      'env_kwargs': {},
      'variables': 8,
      'output_transform': ot_lunarlander,
-     'pset': get_primitive_set_for_benchmark('lander', 8)} 
+     'pset': get_primitive_set_for_benchmark('lander', 8)},
+    {'name': 'rl_invpendulum',
+     'env_name': "InvertedPendulum-v4",
+     'env_kwargs': {},
+     'variables': 4,
+     'output_transform': ot_invpendulum,
+     'pset': get_primitive_set_for_benchmark('pagie-1', 4)},
+    {'name': 'rl_swimmer',
+     'env_name': "Swimmer-v4",
+     'env_kwargs': {},
+     'variables': 8,
+     'output_transform': ot_swimmer,
+     'pset': get_primitive_set_for_benchmark('lander', 8)}
 ]
