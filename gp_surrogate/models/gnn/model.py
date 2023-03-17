@@ -28,7 +28,8 @@ def to_dataset(ind_graphs, y_accuracies=None, x_features=None, batch_size=32, sh
 
 
 def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-              transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0, device=None):
+              transform=None, ranking=False, mse_both=False, auxiliary_weight=0.0, device=None, val_loader=None,
+              val_metrics=None):
     model = model.to(device)
 
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
@@ -36,6 +37,7 @@ def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, 
     aux_criterion = torch.nn.MSELoss()
     ranking_criterion = torch.nn.MarginRankingLoss()
 
+    epoch_metrics = []
     epoch_losses = []
     for e in range(n_epochs):
         model.train()
@@ -86,7 +88,11 @@ def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, 
             print(f"Epoch {e} loss: mean {e_loss}, std {e_std}")
             epoch_losses.append(e_loss)
 
-    return epoch_losses
+        if val_loader is not None:
+            metrics = eval_model(model, val_loader, criterion, metrics=val_metrics, transform=transform, device=device)
+            epoch_metrics.append(metrics)
+
+    return epoch_losses if val_loader is None else (epoch_losses, epoch_metrics)
 
 
 class MLP(torch.nn.Module):
@@ -104,6 +110,29 @@ class MLP(torch.nn.Module):
                 x = F.relu(x)
             x = lin(x)
         return x
+
+
+def eval_model(model, data_loader, criterion, metrics=None, transform=None, device=None):
+    model.eval()
+    res = []
+
+    for data in data_loader:
+        data = data if transform is None else transform(data)
+        data = data.to(device)
+        features = data.features if 'features' in data else None
+        aux_in = torch.tensor(data.aux_in) if 'aux_in' in data else None
+        aux_out = torch.tensor(data.aux_out) if 'aux_out' in data else None
+
+        # TODO aux metrics
+        out, pred_aux = model(data.x, data.edge_index, data.batch, features=features,
+                              aux_in=aux_in)  # Perform a single forward pass.
+
+        # metrics on batch
+        loss = criterion(out, data.y)
+        metric_vals = {} if metrics is None else {k: m(out, data.y) for k, m in metrics.items()}
+        metric_vals['loss'] = loss
+        res.append(metric_vals)
+    return res
 
 
 def _get_MLP(n_in, n_hidden, n_linear, i):

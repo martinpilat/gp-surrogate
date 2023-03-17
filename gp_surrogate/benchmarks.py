@@ -162,6 +162,14 @@ def ot_invpendulum(x):
     return [min(max(x, -3), 3)]
 
 
+def bench_by_name(name):
+    for b in benchmark_description:
+        if b['name'] == name:
+            return b
+
+    raise ValueError(f"Invalid name: {name}")
+
+
 benchmark_description = [
     {'name': 'keijzer-6',
      'variables': 1,

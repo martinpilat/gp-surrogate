@@ -130,7 +130,7 @@ class NeuralNetSurrogate(SurrogateBase):
                  verbose=False, readout='concat', use_global_node=False, gcn_transform=False,
                  include_features=False, n_features=None, ranking=False, mse_both=False, auxiliary_weight=0.1,
                  use_auxiliary=False, out_lim=100, sample_size=20, device=None, n_convs=3,
-                 dropout=0.1, gnn_hidden=32, dense_hidden=32, **kwargs):
+                 dropout=0.1, gnn_hidden=32, dense_hidden=32, metrics=None, **kwargs):
 
         super().__init__(pset, n_jobs)
         self.feature_template = gen_feature_vec_template(pset)
@@ -166,6 +166,12 @@ class NeuralNetSurrogate(SurrogateBase):
         self.dense_hidden = dense_hidden
         self.n_convs = n_convs
 
+        self.metrics = metrics
+
+    def load_state_dict(self, state_dict):
+        self._init_model()
+        self.model.load_state_dict(state_dict)
+
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features, n_convs=self.n_convs,
                                readout=self.readout, use_auxiliary=self.use_auxiliary, aux_sample_size=self.sample_size,
@@ -198,16 +204,23 @@ class NeuralNetSurrogate(SurrogateBase):
                              batch_size=self.batch_size, shuffle=self.shuffle, aux=aux_sample)
         return dataset
 
-    def fit(self, inds, fitness, first_gen=False):
+    def fit(self, inds, fitness, first_gen=False, val_set=None):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
+        if val_set is not None:
+            val_inds, val_fitness = val_set
+            val_dataset = self._create_dataset(val_inds, fitness=val_fitness, first_gen=first_gen)
+        else:
+            val_dataset = None
+
         self._init_model()
         self.model.train()
 
-        train_gnn(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-                  verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss, mse_both=self.mse_both,
-                  auxiliary_weight=self.auxiliary_weight, device=self.device)
+        res = train_gnn(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                        verbose=self.verbose, transform=self.transform, ranking=self.use_ranking_loss,
+                        mse_both=self.mse_both, auxiliary_weight=self.auxiliary_weight, device=self.device,
+                        val_loader=val_dataset, val_metrics=self.metrics)
 
-        return self
+        return res
 
     def predict(self, inds):
         self.model = self.model.to(self.device)
@@ -317,6 +330,7 @@ class TreeLSTMSurrogate(SurrogateBase):
 
     def fit(self, inds, fitness, first_gen=False):
         dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
+
         self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
                                    use_auxiliary=self.use_auxiliary,
                                    auxiliary_weight=self.auxiliary_weight, aux_sample_size=self.sample_size, **self.model_kwargs).train()
