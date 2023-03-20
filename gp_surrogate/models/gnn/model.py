@@ -132,6 +132,7 @@ def eval_model(model, data_loader, criterion, metrics=None, transform=None, devi
         metric_vals = {} if metrics is None else {k: m(out, data.y) for k, m in metrics.items()}
         metric_vals['loss'] = loss
         res.append(metric_vals)
+
     return res
 
 

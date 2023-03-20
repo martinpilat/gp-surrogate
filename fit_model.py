@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import pickle
 import random
@@ -9,33 +10,9 @@ from deap import creator, base, gp
 import optuna
 import functools
 
-from gp_surrogate import benchmarks, surrogate
-from gp_surrogate.benchmarks import bench_by_name
-
-
-def load_dataset(file_list, dir_path=None, data_size=None):
-    if not len(file_list):
-        return None
-
-    if dir_path is not None:
-        file_list = [os.path.join(dir_path, f) for f in file_list]
-
-    inds = []
-    fitness = []
-    for file in file_list:
-        with open(file, 'rb') as f:
-            data = pickle.load(f)
-            inds.extend(data[0])
-            fitness.extend(data[1])
-
-    fitness = [f[0] for f in fitness]
-
-    if data_size is not None:
-        indices = random.sample(range(len(inds)), data_size)
-        inds = [inds[i] for i in indices]
-        fitness = [fitness[i] for i in indices]
-
-    return inds, fitness
+from gp_surrogate import surrogate
+from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander
+from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench
 
 
 def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs):
@@ -78,7 +55,6 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
 
     print(kwargs)    
 
-    preds = None
     try:
         clf = surrogate.NeuralNetSurrogate(pset, **kwargs)
 
@@ -90,62 +66,69 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     return scipy.stats.spearmanr(preds, val_set[1]).correlation
 
 
+def run_optuna(train_data, val_data, bench_data):
+    n_features = train_data[0][0].features.values.shape[1]
+    n_aux_inputs = bench_data['variables']
+    n_aux_outputs = 2 if bench_data['output_transform'] == ot_lunarlander else 1
+    opt_obj = functools.partial(objective, train_set=train_data, val_set=val_data,
+                                n_features=n_features, n_aux_inputs=n_aux_inputs, n_aux_outputs=n_aux_outputs)
+    study = optuna.create_study(direction='maximize')
+    study.optimize(opt_obj, n_trials=100)
+    print(study.best_params)
+
+    return study
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run GP with surrogate model')
+    parser.add_argument('--surrogate', '-S', type=str, help='Which surrogate to use (GNN, TNN)', default='GNN')
     parser.add_argument('--data_dir', '-D', type=str, help='Dataset directory')
     parser.add_argument('--checkpoint_path', '-C', type=str, help='Path to save checkpoint to.')
     parser.add_argument('--train_ids', '-T', type=int, nargs='+', required=True,
                         help='Generation indices for the train set.')
     parser.add_argument('--val_ids', '-V', type=int, nargs='*', default=[], help='Generation indices for the val set.')
     parser.add_argument('--train_size', '-N', type=int, default=None, help='Train set subsample size.')
+    parser.add_argument('--kwargs_json', '-J', type=str, default=None, help='Json path to model kwargs.')
+    parser.add_argument('--optuna', '-O', action='store_true', help='If True, run optuna optimization to find a model.')
 
     args = parser.parse_args()
 
-    assert not os.path.exists(args.checkpoint_path)
-    # TODO model kwargs
-    model_kwargs = {}
+    # either run one model or optima optimization
+    assert args.kwargs_json is None or (not args.optuna)
 
-    # TODO choose class
-    surrogate_cls = surrogate.NeuralNetSurrogate
+    # create save dir, check if checkpoint name unique
+    assert not os.path.exists(args.checkpoint_path)
+    checkpoint_dir = os.path.dirname(args.checkpoint_path)
+    if not os.path.exists(checkpoint_dir):
+        os.mkdir(checkpoint_dir)
+
+    surrogate_cls = get_model_class(args.surrogate)
 
     # no overlap possible
     assert len(set(args.train_ids).intersection(set(args.val_ids))) == 0
 
-    all_files = os.listdir(args.data_dir)
-    bench_name = all_files[0].split('.')[1]
+    # load benchmark and dataset info
+    all_files, bench_description, pset = init_bench(args.data_dir)
 
-    pset = bench_by_name(bench_name)['pset']
-
-    # create the types for fitness and individuals
-    creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
-    creator.create('Individual', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
-
-    train_files = []
-    val_files = []
-
-    for file in all_files:
-        gen_id = int(file.split('.')[-2])
-        if gen_id in args.train_ids:
-            train_files.append(file)
-        elif gen_id in args.val_ids:
-            val_files.append(file)
+    train_files = get_files_by_index(all_files, args.train_ids)
+    val_files = get_files_by_index(all_files, args.val_ids)
 
     train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size)
     val_set = load_dataset(val_files, args.data_dir)
 
-    n_features = train_set[0][0].features.values.shape[1]
-    n_aux_inputs = bench_by_name(bench_name)['variables']
-    n_aux_outputs = 2 if 'lunar' in bench_name else 1
-    opt_obj = functools.partial(objective, train_set=train_set, val_set=val_set,
-                                n_features=n_features, n_aux_inputs=n_aux_inputs, n_aux_outputs=n_aux_outputs)
-    study = optuna.create_study(direction='maximize')
-    study.optimize(opt_obj, n_trials=100)
-    print(study.best_params)
-
+    # run search or model training
     # TODO train model with best_params found by optuna
+    if args.optuna:
+        study = run_optuna(train_set, val_set, bench_description)
+        model_kwargs = None  # TODO get from optuna
+    else:
+        with open(args.kwargs_json, 'r') as f:
+            model_kwargs = json.load(f)
+
     clf = surrogate_cls(pset, **model_kwargs)
     clf.fit(train_set[0], train_set[1], val_set=val_set)
 
+    # save best/trained model
     checkpoint = {'kwargs': model_kwargs, 'state_dict': clf.model.state_dict()}
     torch.save(checkpoint, args.checkpoint_path)
 

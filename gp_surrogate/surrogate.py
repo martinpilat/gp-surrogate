@@ -267,7 +267,7 @@ class TreeLSTMSurrogate(SurrogateBase):
                  n_epochs=30, batch_size=32, shuffle=False, optimizer=None, loss=None, verbose=False,
                  use_root=False, use_global_node=False, include_features=False, n_features=None,
                  ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.1,
-                 out_lim=100, sample_size=20, device=None, **kwargs):
+                 out_lim=100, sample_size=20, device=None, metrics=None, **kwargs):
         super().__init__(pset, n_jobs=n_jobs)
 
         self.feature_template = gen_feature_vec_template(pset)
@@ -292,6 +292,11 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.out_lim = out_lim
         self.sample_size = sample_size
         self.device = device
+        self.metrics = metrics
+
+    def load_state_dict(self, state_dict):
+        self._init_model()
+        self.model.load_state_dict(state_dict)
 
     def _collate_fn(self, x):
         data = {}
@@ -328,18 +333,28 @@ class TreeLSTMSurrogate(SurrogateBase):
                     for ind, fit, features, aux in zip(inds, fitness, feats, aux_sample)]
         return DataLoader(data, collate_fn=self._collate_fn, batch_size=self.batch_size)
 
-    def fit(self, inds, fitness, first_gen=False):
-        dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
-
+    def _init_model(self):
         self.model = TreeLSTMModel(len(self.feature_template) + 2, n_features=self.n_features,
                                    use_auxiliary=self.use_auxiliary,
-                                   auxiliary_weight=self.auxiliary_weight, aux_sample_size=self.sample_size, **self.model_kwargs).train()
+                                   auxiliary_weight=self.auxiliary_weight, aux_sample_size=self.sample_size, **self.model_kwargs)
+
+    def fit(self, inds, fitness, first_gen=False, val_set=None):
+        if val_set is not None:
+            val_inds, val_fitness = val_set
+            val_dataset = self._create_dataset(val_inds, fitness=val_fitness, first_gen=first_gen)
+        else:
+            val_dataset = None
+
+        dataset = self._create_dataset(inds, fitness=fitness, first_gen=first_gen)
+
+        self._init_model()
         self.model.train()
 
-        train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
-                   verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
-                   auxiliary_weight=self.auxiliary_weight, device=self.device)
-        return self
+        res = train_lstm(self.model, dataset, n_epochs=self.n_epochs, optimizer=self.optimizer, criterion=self.criterion,
+                         verbose=False, ranking=self.ranking, mse_both=self.mse_both, use_auxiliary=self.use_auxiliary,
+                         auxiliary_weight=self.auxiliary_weight, device=self.device, val_loader=val_dataset,
+                         val_metrics=self.metrics)
+        return res
 
     def predict(self, inds):
         self.model = self.model.to(self.device)

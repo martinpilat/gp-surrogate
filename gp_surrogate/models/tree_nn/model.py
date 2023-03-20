@@ -7,7 +7,8 @@ from gp_surrogate.models.utils import get_layer_sizes, apply_layer_dropout_relu
 
 
 def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, criterion=None, verbose=True,
-               transform=None, ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.0, device=None):
+               transform=None, ranking=False, mse_both=False, use_auxiliary=False, auxiliary_weight=0.0, device=None,
+               val_loader=None, val_metrics=None):
     model = model.to(device)
 
     optimizer = optimizer if optimizer is not None else torch.optim.Adam(model.parameters(), lr=0.001)
@@ -16,6 +17,7 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
 
     ranking_criterion = torch.nn.MarginRankingLoss()
 
+    epoch_metrics = []
     epoch_losses = []
     for e in range(n_epochs):
         model.train()
@@ -54,13 +56,38 @@ def train_lstm(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None,
 
             batch_losses.append(loss.detach().cpu().numpy())
 
+        if val_loader is not None:
+            metrics = eval_model(model, val_loader, criterion, metrics=val_metrics, transform=transform, device=device)
+            epoch_metrics.append(metrics)
+
         e_loss = np.mean(batch_losses)
         e_std = np.std(batch_losses)
         if verbose:
             print(f"Epoch {e} loss: mean {e_loss}, std {e_std}")
             epoch_losses.append(e_loss)
 
-    return epoch_losses
+    return epoch_losses if val_loader is None else (epoch_losses, epoch_metrics)
+
+
+def eval_model(model, data_loader, criterion, metrics=None, transform=None, device=None):
+    model.eval()
+
+    res = []
+
+    for data in data_loader:
+        data = data if transform is None else transform(data)
+        data = {k: (v.to(device) if k != 'x' and v is not None else v) for k, v in data.items()}
+        data['x'] = {k: (v.to(device) if k != 'tree_sizes' else v) for k, v in data['x'].items()}
+        features = data['features'] if 'features' in data else None
+
+        out, aux_out = model(data['x'], features=features, aux_x=data['aux_x'])  # Perform a single forward pass.
+        loss = criterion(out, data['y'])
+
+        metric_vals = {} if metrics is None else {k: m(out, data['y']) for k, m in metrics.items()}
+        metric_vals['loss'] = loss
+        res.append(metric_vals)
+
+    return res
 
 
 class TreeLSTMModel(torch.nn.Module):
