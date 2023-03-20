@@ -221,7 +221,7 @@ def run_baseline(i, bench, out_prefix=""):
 
     # run the baseline algorithm
     pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, args.max_evals,
-                                       stats=mstats, halloffame=hof, verbose=True, n_jobs=1, 
+                                       pset=pset, stats=mstats, halloffame=hof, verbose=True, n_jobs=1, 
                                        save_data=save_training_data)
 
     return pop, log, hof

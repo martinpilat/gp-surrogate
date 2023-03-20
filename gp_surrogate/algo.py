@@ -353,7 +353,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
     return population, logbook
 
 
-def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
+def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, pset=None, stats=None,
                        halloffame=None, verbose=__debug__, save_data=False, n_jobs=1):
     """ Performs the baseline version of the ea
 
@@ -379,6 +379,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
         fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
+            add_features(ind, pset)
 
         if save_data:
             save_training_data(0, invalid_ind, fitnesses, save_data)
@@ -406,6 +407,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, stats=None,
             fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+                add_features(ind, pset)
 
             if save_data:
                 save_training_data(gen, invalid_ind, fitnesses, save_data)            
