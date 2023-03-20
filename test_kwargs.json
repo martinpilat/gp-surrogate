@@ -1,0 +1,15 @@
+{
+  "readout": "concat",
+  "use_global_node": false,
+  "n_epochs": 20,
+  "shuffle": false,
+  "include_features": false,
+  "ranking": false,
+  "mse_both": false,
+  "use_auxiliary": false,
+  "dropout": 0.1,
+  "gnn_hidden": 64,
+  "dense_hidden": 64,
+  "batch_size": 32,
+  "n_convs": 3
+}

@@ -99,7 +99,7 @@ if __name__ == "__main__":
     # create save dir, check if checkpoint name unique
     assert not os.path.exists(args.checkpoint_path)
     checkpoint_dir = os.path.dirname(args.checkpoint_path)
-    if not os.path.exists(checkpoint_dir):
+    if len(checkpoint_dir) and not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
     surrogate_cls = get_model_class(args.surrogate)

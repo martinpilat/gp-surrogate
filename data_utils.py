@@ -2,6 +2,7 @@ import os
 import random
 import pickle
 
+import numpy as np
 import scipy
 import scipy.stats
 import sklearn.metrics
@@ -59,7 +60,7 @@ def get_files_by_index(files, index_list):
 
 def init_bench(data_dir):
     all_files = os.listdir(data_dir)
-    bench_name = all_files[0].split('.')[1]
+    bench_name = all_files[0].split('.')[2]
 
     bench_description = bench_by_name(bench_name)
     pset = bench_description['pset']
@@ -71,10 +72,29 @@ def init_bench(data_dir):
     return all_files, bench_description, pset
 
 
+def top_third(sorted_ix):
+    bad_ix = sorted_ix[-int(2 * len(sorted_ix) / 3):]
+
+    mask = np.ones_like(sorted_ix)
+    mask[bad_ix] = 0
+    return mask
+
+
 def eval_metrics(preds, y_true):
     corr = scipy.stats.spearmanr(preds, y_true).correlation
     tau, _ = scipy.stats.kendalltau(preds, y_true)
-    ndcg = sklearn.metrics.ndcg_score(preds, y_true)
-    # TODO top 1/3 prec/recall
 
-    return {'spearman': corr, 'tau': tau, 'ndcg': ndcg}
+    sorted_preds = np.argsort(preds)
+    sorted_y_true = np.argsort(y_true)
+    ndcg = sklearn.metrics.ndcg_score(sorted_preds.reshape(1, -1), sorted_y_true.reshape(1, -1))
+
+    top_preds = top_third(sorted_preds)
+    top_y_true = top_third(sorted_y_true)
+
+    tp = np.sum(top_preds & top_y_true)
+    precision = tp / np.sum(top_preds)  # TP + FP
+    recall = tp / np.sum(top_y_true)  # all positives
+    accuracy = np.sum(top_preds == top_y_true) / len(top_preds)
+
+    return {'spearman': corr, 'tau': tau, 'ndcg': ndcg, 'precision_tt': precision, 'recall_tt': recall,
+            'accuracy_tt': accuracy}
