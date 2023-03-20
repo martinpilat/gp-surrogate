@@ -107,15 +107,15 @@ class TreeLSTMModel(torch.nn.Module):
         self.use_auxiliary = use_auxiliary
         self.aux_sample_size = aux_sample_size
 
-        n_features = n_features if n_features is not None else 0
-
-        lin_sizes = get_layer_sizes(n_lin, dense_hidden, first_size=tnn_hidden + n_features, last_size=1)
+        self.n_features = n_features if n_features is not None else 0
+        print(f'{n_features=}')
+        lin_sizes = get_layer_sizes(n_lin, dense_hidden, first_size=tnn_hidden + self.n_features, last_size=1)
         self.lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
         self.use_root = use_root
 
         if use_auxiliary:
-            lin_sizes = get_layer_sizes(n_lin, aux_hidden, first_size=tnn_hidden + n_features + n_aux_inputs,
+            lin_sizes = get_layer_sizes(n_lin, aux_hidden, first_size=tnn_hidden + self.n_features + n_aux_inputs,
                                         last_size=n_aux_outputs)
             self.aux_lins = torch.nn.ModuleList([Linear(indim, outdim) for indim, outdim in lin_sizes])
 
@@ -129,7 +129,7 @@ class TreeLSTMModel(torch.nn.Module):
             x = torch.vstack([torch.mean(i, axis=0) for i in x])
 
         # add manual features
-        if self.concat_lin is not None:
+        if self.n_features > 0:
             x = torch.concat([x, features], dim=-1)
         embed = x
 
