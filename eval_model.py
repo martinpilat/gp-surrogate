@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     all_files, bench_description, pset = init_bench(args.data_dir)
 
-    test_files = get_files_by_index(all_files, args.val_ids)
+    test_files = get_files_by_index(all_files, args.test_ids)
     test_set = load_dataset(test_files, args.data_dir)
 
     surrogate_cls = get_model_class(args.surrogate)
