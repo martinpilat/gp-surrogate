@@ -12,7 +12,7 @@ from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander
 from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench
 
 def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
-    readout = trial.suggest_categorical('readout', ['concat', 'root', 'mean'])
+    #readout = trial.suggest_categorical('readout', ['concat', 'root', 'mean'])
     # if readout != 'root':
     #     use_global_node = trial.suggest_categorical('use_global_node', [False, True])
     include_features = trial.suggest_categorical('include_features', [False, True])
@@ -29,7 +29,7 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
     dense_hidden = trial.suggest_int('dense_hidden', 8, 64, log=True)
     n_convs = trial.suggest_int('n_convs', 1, 10)
 
-    kwargs = {'readout': readout, 
+    kwargs = {'readout': 'concat',
               'use_global_node': False,
               'n_epochs': 20, 
               'shuffle': False, 
@@ -81,8 +81,8 @@ def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
               'n_aux_outputs': n_aux_outputs,
               'aux_hidden': aux_hidden, 
               'dropout': dropout, 
-              'tnn_hidden':tnn_hidden, 
-              'dense_hidden':dense_hidden,
+              'tnn_hidden': tnn_hidden,
+              'dense_hidden': dense_hidden,
               'batch_size': 32}
 
     trial.set_user_attr('model_kwargs', kwargs)
@@ -136,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('--train_size', '-N', type=int, default=None, help='Train set subsample size.')
     parser.add_argument('--kwargs_json', '-J', type=str, default=None, help='Json path to model kwargs.')
     parser.add_argument('--optuna', '-O', action='store_true', help='If True, run optuna optimization to find a model.')
+    parser.add_argument('--force', '-F', action='store_true', help='If True, overwrite existing checkpoints.')
 
     args = parser.parse_args()
 
@@ -143,7 +144,8 @@ if __name__ == "__main__":
     assert args.kwargs_json is None or (not args.optuna)
 
     # create save dir, check if checkpoint name unique
-    assert not os.path.exists(args.checkpoint_path)
+    if not args.force:
+        assert not os.path.exists(args.checkpoint_path)
     checkpoint_dir = os.path.dirname(args.checkpoint_path)
     if len(checkpoint_dir) and not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
