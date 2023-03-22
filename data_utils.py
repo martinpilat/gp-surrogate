@@ -1,6 +1,7 @@
 import os
 import random
 import pickle
+import pygraphviz as pgv
 
 import numpy as np
 import scipy
@@ -10,6 +11,32 @@ from deap import creator, base, gp
 
 from gp_surrogate import surrogate
 from gp_surrogate.benchmarks import bench_by_name
+
+
+def plot_best_tree(inds, fitness, save_path):
+    best_id = np.argmin(fitness)
+
+    nodes, edges, labels = gp.graph(inds[best_id])
+    g = pgv.AGraph()
+    g.add_nodes_from(nodes)
+    g.add_edges_from(edges)
+    g.layout(prog="dot")
+
+    for ni in nodes:
+        n = g.get_node(ni)
+        n.attr["label"] = labels[ni]
+
+    g.draw(save_path)
+    return inds[best_id], fitness[best_id]
+
+
+def inds_to_str(inds):
+    return [str(ind) for ind in inds]
+
+
+def get_common_inds(inds1, inds2):
+    inds1, inds2 = set(inds_to_str(inds1)), set(inds_to_str(inds2))
+    return inds1.intersection(inds2)
 
 
 def load_dataset(file_list, dir_path=None, data_size=None):
@@ -80,21 +107,42 @@ def top_third(sorted_ix):
     return mask
 
 
-def eval_metrics(preds, y_true):
-    corr = scipy.stats.spearmanr(preds, y_true).correlation
-    tau, _ = scipy.stats.kendalltau(preds, y_true)
+def get_rank_scores(sort_ids):
+    scores = np.zeros_like(sort_ids)
+    for pos, index in enumerate(sort_ids):
+        scores[index] = pos
+
+    return len(sort_ids) - scores
+
+
+def _mask_out(preds, y_true, mask=None):
+    return (preds, y_true) if mask is None else (preds[mask], y_true[mask])
+
+
+def eval_metrics(preds, y_true, mask=None):
+    """
+    mask: list of bools for np array filtering
+    """
+    res = {}
+    cpreds, cy_true = _mask_out(preds, y_true, mask=mask)
+
+    res['spearman'] = scipy.stats.spearmanr(cpreds, cy_true).correlation
+    tau, _ = scipy.stats.kendalltau(cpreds, cy_true)
+    res['tau'] = tau
 
     sorted_preds = np.argsort(preds)
     sorted_y_true = np.argsort(y_true)
-    ndcg = sklearn.metrics.ndcg_score(sorted_preds.reshape(1, -1), sorted_y_true.reshape(1, -1))
+    if mask is None:
+        score_preds, score_y_true = get_rank_scores(sorted_preds), get_rank_scores(sorted_y_true)
+        res['ndcg'] = sklearn.metrics.ndcg_score(score_preds.reshape(1, -1), score_y_true.reshape(1, -1))
 
     top_preds = top_third(sorted_preds)
     top_y_true = top_third(sorted_y_true)
+    top_preds, top_y_true = _mask_out(top_preds, top_y_true, mask=mask)
 
     tp = np.sum(top_preds & top_y_true)
-    precision = tp / np.sum(top_preds)  # TP + FP
-    recall = tp / np.sum(top_y_true)  # all positives
-    accuracy = np.sum(top_preds == top_y_true) / len(top_preds)
+    res['precision_tt'] = tp / np.sum(top_preds)  # TP + FP
+    res['recall_tt'] = tp / np.sum(top_y_true)  # all positives
+    res['accuracy'] = np.sum(top_preds == top_y_true) / len(top_preds)
 
-    return {'spearman': corr, 'tau': tau, 'ndcg': ndcg, 'precision_tt': precision, 'recall_tt': recall,
-            'accuracy_tt': accuracy}
+    return res

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import pickle
 
 import scipy.stats
 import torch
@@ -9,7 +10,8 @@ import functools
 
 from gp_surrogate import surrogate
 from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander
-from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench
+from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str
+
 
 def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
     #readout = trial.suggest_categorical('readout', ['concat', 'root', 'mean'])
@@ -187,3 +189,7 @@ if __name__ == "__main__":
     preds = model.predict(val_set[0])
     r = scipy.stats.spearmanr(preds, val_set[1])
     print(f'Model loaded from {args.checkpoint_path}, validation Spearman R: {r}')
+
+    train_set_name = f"{os.path.splitext(args.checkpoint_path)[0]}_train_ids.pickle"
+    with open(train_set_name, 'wb') as f:
+        pickle.dump(set(inds_to_str(train_set[0])), f)

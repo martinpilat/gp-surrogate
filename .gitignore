@@ -2,3 +2,5 @@ output
 __pycache__
 train_data
 *.pt
+*.pdf
+*.pickle
