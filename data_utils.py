@@ -39,7 +39,7 @@ def get_common_inds(inds1, inds2):
     return inds1.intersection(inds2)
 
 
-def load_dataset(file_list, dir_path=None, data_size=None):
+def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False):
     if not len(file_list):
         return None
 
@@ -55,6 +55,12 @@ def load_dataset(file_list, dir_path=None, data_size=None):
             fitness.extend(data[1])
 
     fitness = [f[0] for f in fitness]
+
+    if unique_only:
+        ind_str = np.array([str(ind) for ind in inds])
+        _, idxs = np.unique(ind_str, return_index=True)
+        inds = [inds[i] for i in idxs]
+        fitness = [fitness[i] for i in idxs]
 
     if data_size is not None:
         indices = random.sample(range(len(inds)), data_size)
@@ -87,7 +93,7 @@ def get_files_by_index(files, index_list):
 
 def init_bench(data_dir):
     all_files = os.listdir(data_dir)
-    bench_name = all_files[0].split('.')[2]
+    bench_name = all_files[0].split('.')[-7]
 
     bench_description = bench_by_name(bench_name)
     pset = bench_description['pset']

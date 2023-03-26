@@ -23,6 +23,8 @@ def add_features(ind, pset):
 
 def save_training_data(gen, pop, fits, filename):
     import pickle
+    if not fits:
+        fits = [ind.fitness.values for ind in pop]
     with open(f'{filename}.{gen}.pkl', 'wb') as f:
         pickle.dump((pop, fits), f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -65,9 +67,10 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
             ind.estimate = False
+            ind.eval_gen = 0
             add_features(ind, pset)
         if save_data:
-            save_training_data(0, invalid_ind, save_data)
+            save_training_data(0, invalid_ind, None, save_data)
 
         # add the evaluated individuals into archive
         archive = invalid_ind
@@ -146,6 +149,7 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                 for ind, fit in zip(in_par, fitnesses):
                     ind.fitness.values = fit
                     ind.estimate = False
+                    ind.eval_gen = gen
                     add_features(ind, pset)
 
                 archive = archive+in_par
@@ -156,17 +160,17 @@ def ea_surrogate_localsearch(population, toolbox, cxpb, mutpb, max_evals, pset,
                     offspring[i] = o
                 
             # prepare the rest of the individuals for evaluation with the real fitness 
-            # (all individuals should have invalid fitness if the local search was performed)
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
             # evaluate invalid individuals with the real fitness
             fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
                 ind.estimate = False
+                ind.eval_gen = gen
                 add_features(ind, pset)
             
             if save_data:
-                save_training_data(gen, invalid_ind, fitnesses, save_data)
+                save_training_data(gen, offspring, None, save_data)
 
             assert all(not ind.estimate for ind in offspring)
 
@@ -238,10 +242,11 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
             ind.estimate = False
+            ind.eval_gen = 0
             add_features(ind, pset)
 
         if save_data:
-            save_training_data(0, invalid_ind, fitnesses, save_data)
+            save_training_data(0, population, None, save_data)
 
         # add the evaluated individuals into archive
         archive = invalid_ind
@@ -315,11 +320,11 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
                 ind.estimate = False
+                ind.eval_gen = gen
                 add_features(ind, pset)
 
             if save_data:
-                real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in offspring)
-                save_training_data(gen, offspring, real_preds, save_data)
+                save_training_data(gen, offspring, None, save_data)
 
             # add the evaluated individual into the archive
             archive = archive+invalid_ind
@@ -379,10 +384,11 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, pset=None, s
         fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
+            ind.eval_gen = 0
             add_features(ind, pset)
 
         if save_data:
-            save_training_data(0, invalid_ind, fitnesses, save_data)
+            save_training_data(0, population, None, save_data)
 
         n_evals = len(invalid_ind)
 
@@ -407,10 +413,11 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, pset=None, s
             fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+                ind.eval_gen = gen
                 add_features(ind, pset)
 
             if save_data:
-                save_training_data(gen, invalid_ind, fitnesses, save_data)            
+                save_training_data(gen, offspring, None, save_data)            
 
             n_evals += len(invalid_ind)
 

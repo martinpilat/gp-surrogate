@@ -113,14 +113,18 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     return scipy.stats.spearmanr(preds, val_set[1]).correlation
 
 
-def run_optuna(train_data, val_data, bench_data, surrogate):
+def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None):
     n_features = train_data[0][0].features.values.shape[1]
     n_aux_inputs = bench_data['variables']
     n_aux_outputs = 2 if 'output_transform' in bench_data and bench_data['output_transform'] == ot_lunarlander else 1
     opt_obj = functools.partial(objective, train_set=train_data, val_set=val_data,
                                 n_features=n_features, n_aux_inputs=n_aux_inputs,
                                 n_aux_outputs=n_aux_outputs, surrogate=surrogate)
-    study = optuna.create_study(direction='maximize')
+    study = None
+    if study_name:
+        study = optuna.create_study(direction='maximize', study_name=study_name, storage=f'sqlite:///{study_name}.db') 
+    else:
+        study = optuna.create_study(direction='maximize')
     study.optimize(opt_obj, n_trials=5)
     print(study.best_params)
 
@@ -139,6 +143,8 @@ if __name__ == "__main__":
     parser.add_argument('--kwargs_json', '-J', type=str, default=None, help='Json path to model kwargs.')
     parser.add_argument('--optuna', '-O', action='store_true', help='If True, run optuna optimization to find a model.')
     parser.add_argument('--force', '-F', action='store_true', help='If True, overwrite existing checkpoints.')
+    parser.add_argument('--unique_train', '-U', action='store_true', help='Use only unique individuals for training')
+    parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
 
     args = parser.parse_args()
 
@@ -163,12 +169,12 @@ if __name__ == "__main__":
     train_files = get_files_by_index(all_files, args.train_ids)
     val_files = get_files_by_index(all_files, args.val_ids)
 
-    train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size)
+    train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size, unique_only=args.unique_train)
     val_set = load_dataset(val_files, args.data_dir)
 
     # run search or model training
     if args.optuna:
-        study = run_optuna(train_set, val_set, bench_description, args.surrogate)
+        study = run_optuna(train_set, val_set, bench_description, args.surrogate, args.study_name)
         model_kwargs = study.best_trial.user_attrs['model_kwargs']
     else:
         with open(args.kwargs_json, 'r') as f:
