@@ -47,6 +47,7 @@ parser.add_argument('--max_train_size', type=int, help='The maximum size of the 
 parser.add_argument('--batch_size', type=int, help='Batch size for GNN / TreeLSTM', default=32)
 parser.add_argument('--n_convs', type=int, help='Number of GNN conv layers', default=3)
 parser.add_argument('--save_training_data', help='Save data for training of surrogates', action='store_true')
+parser.add_argument('--save_dir', type=str, help='Save data directory', default=None)
 args = parser.parse_args()
 
 print(args)
@@ -216,8 +217,9 @@ def run_baseline(i, bench, out_prefix=""):
 
     save_training_data = args.save_training_data
     if args.save_training_data:
-        os.makedirs('train_data', exist_ok=True)
-        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+        subdir = f"{args.save_dir}/train_data" if args.save_dir is not None else 'train_data'
+        os.makedirs(subdir, exist_ok=True)
+        save_training_data = f'{subdir}/{out_prefix}.r{i}.g'
 
     # run the baseline algorithm
     pop, log = algo.ea_baseline_simple(pop, toolbox, 0.2, 0.7, args.max_evals,
@@ -265,8 +267,9 @@ def run_model_test(i, bench, out_prefix=""):
 
     save_training_data = args.save_training_data
     if args.save_training_data:
-        os.mkdir('training_data', exists_ok=True)
-        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+        subdir = f"{args.save_dir}/train_data" if args.save_dir is not None else 'train_data'
+        os.makedirs(subdir, exist_ok=True)
+        save_training_data = f'{subdir}/{out_prefix}.r{i}.g'
 
     # run the baseline algorithm
     pop, log, feat_imp = algo.ea_baseline_model(pop, toolbox, 0.2, 0.7, 110,
@@ -324,8 +327,9 @@ def run_surrogate(i, bench, out_prefix=""):
 
     save_training_data = args.save_training_data
     if args.save_training_data:
-        os.makedirs('train_data', exist_ok=True)
-        save_training_data = f'train_data/{out_prefix}.r{i}.g'
+        subdir = f"{args.save_dir}/train_data" if args.save_dir is not None else 'train_data'
+        os.makedirs(subdir, exist_ok=True)
+        save_training_data = f'{subdir}/{out_prefix}.r{i}.g'
 
     # run the surrogate algorithm
     if args.use_local_search :
