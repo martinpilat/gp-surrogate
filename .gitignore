@@ -4,3 +4,5 @@ train_data
 *.pt
 *.pdf
 *.pickle
+eval_test
+*.db

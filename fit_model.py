@@ -10,7 +10,8 @@ import functools
 
 from gp_surrogate import surrogate
 from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander
-from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str
+from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str, \
+    compute_without_invalids
 
 
 def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
@@ -18,7 +19,7 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
     # if readout != 'root':
     #     use_global_node = trial.suggest_categorical('use_global_node', [False, True])
     include_features = trial.suggest_categorical('include_features', [False, True])
-    #ranking = trial.suggest_categorical('ranking', [False, True])
+    ranking = trial.suggest_categorical('ranking', [False, True])
     mse_both = trial.suggest_categorical('mse_both', [False, True])
     use_auxiliary = trial.suggest_categorical('use_auxiliary', [False, True])
     dropout = trial.suggest_float('dropout', 0.0, 1.0)
@@ -29,15 +30,17 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
         #sample_size = trial.suggest_int('sample_size', 8, 128, log=True)
     gnn_hidden = trial.suggest_int('gnn_hidden', 8, 64, log=True)
     dense_hidden = trial.suggest_int('dense_hidden', 8, 64, log=True)
+    aux_hidden = trial.suggest_int('aux_hidden', 8, 64, log=True)
     n_convs = trial.suggest_int('n_convs', 1, 10)
+    n_epochs = trial.suggest_int('n_epochs', 5, 30, step=5)
 
     kwargs = {'readout': 'concat',
               'use_global_node': False,
-              'n_epochs': 20, 
+              'n_epochs': n_epochs,
               'shuffle': False, 
               'include_features': include_features,
               'n_features': n_features, 
-              'ranking': False, 
+              'ranking': ranking,
               'mse_both': mse_both,
               'use_auxiliary': use_auxiliary, 
               'auxiliary_weight': auxiliary_weight, 
@@ -46,6 +49,7 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
               'dropout': dropout, 
               'gnn_hidden': gnn_hidden, 
               'dense_hidden': dense_hidden,
+              'aux_hidden': aux_hidden,
               'batch_size': 32, 
               'n_convs': n_convs}
 
@@ -56,7 +60,7 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
 def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
     use_root = trial.suggest_categorical('use_root', [False, True])
     include_features = trial.suggest_categorical('include_features', [False, True])
-    #ranking = trial.suggest_categorical('ranking', [False, True])
+    ranking = trial.suggest_categorical('ranking', [False, True])
     mse_both = trial.suggest_categorical('mse_both', [False, True])
     use_auxiliary = trial.suggest_categorical('use_auxiliary', [False, True])
     dropout = trial.suggest_float('dropout', 0.0, 1.0)
@@ -68,14 +72,15 @@ def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
     tnn_hidden = trial.suggest_int('tnn_hidden', 8, 64, log=True)
     dense_hidden = trial.suggest_int('dense_hidden', 8, 64, log=True)
     aux_hidden = trial.suggest_int('aux_hidden', 8, 64, log=True)
-    
+    n_epochs = trial.suggest_int('n_epochs', 5, 30, step=5)
+
     kwargs = {'use_root': use_root, 
               'use_global_node': False,
-              'n_epochs': 20,
+              'n_epochs': n_epochs,
               'shuffle': False, 
               'include_features': include_features, 
               'n_features': n_features,
-              'ranking': False, 
+              'ranking': ranking,
               'mse_both': mse_both, 
               'use_auxiliary': use_auxiliary, 
               'auxiliary_weight': auxiliary_weight,
@@ -93,8 +98,7 @@ def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
 
 def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs, surrogate):
     surrogate_cls = get_model_class(surrogate)
-    
-    model_kwargs = {}
+
     if surrogate == 'GNN':
         model_kwargs = suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs)
     else:
@@ -110,6 +114,7 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     except Exception as e:
         print(e.with_traceback()) #TODO: this is not a valid call to with_traceback, but at least it prints the exception
         return -1
+
     return scipy.stats.spearmanr(preds, val_set[1]).correlation
 
 
@@ -125,7 +130,7 @@ def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None):
         study = optuna.create_study(direction='maximize', study_name=study_name, storage=f'sqlite:///{study_name}.db') 
     else:
         study = optuna.create_study(direction='maximize')
-    study.optimize(opt_obj, n_trials=5)
+    study.optimize(opt_obj, n_trials=20)
     print(study.best_params)
 
     return study
@@ -145,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument('--force', '-F', action='store_true', help='If True, overwrite existing checkpoints.')
     parser.add_argument('--unique_train', '-U', action='store_true', help='Use only unique individuals for training')
     parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
+    parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
 
     args = parser.parse_args()
 
@@ -169,8 +175,9 @@ if __name__ == "__main__":
     train_files = get_files_by_index(all_files, args.train_ids)
     val_files = get_files_by_index(all_files, args.val_ids)
 
-    train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size, unique_only=args.unique_train)
-    val_set = load_dataset(val_files, args.data_dir)
+    train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size, unique_only=args.unique_train,
+                             rescale_val=args.rescale)
+    val_set = load_dataset(val_files, args.data_dir, rescale_val=args.rescale)
 
     # run search or model training
     if args.optuna:

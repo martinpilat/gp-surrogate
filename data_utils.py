@@ -39,7 +39,7 @@ def get_common_inds(inds1, inds2):
     return inds1.intersection(inds2)
 
 
-def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False):
+def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False, rescale_val=None):
     if not len(file_list):
         return None
 
@@ -66,6 +66,9 @@ def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False):
         indices = random.sample(range(len(inds)), data_size)
         inds = [inds[i] for i in indices]
         fitness = [fitness[i] for i in indices]
+
+    if rescale_val is not None:
+        fitness = [(f if f < 1000 else rescale_val) for f in fitness]
 
     return inds, fitness
 
@@ -125,7 +128,7 @@ def _mask_out(preds, y_true, mask=None):
     return (preds, y_true) if mask is None else (preds[mask], y_true[mask])
 
 
-def eval_metrics(preds, y_true, mask=None):
+def eval_metrics(preds, y_true, mask=None, val=None):
     """
     mask: list of bools for np array filtering
     """
@@ -135,6 +138,11 @@ def eval_metrics(preds, y_true, mask=None):
     res['spearman'] = scipy.stats.spearmanr(cpreds, cy_true).correlation
     tau, _ = scipy.stats.kendalltau(cpreds, cy_true)
     res['tau'] = tau
+
+    # valids only
+    res['spearman_valid'] = compute_without_invalids(scipy.stats.spearmanr, cpreds, cy_true, val=val).correlation
+    tau, _ = compute_without_invalids(scipy.stats.kendalltau, cpreds, cy_true, val=val)
+    res['tau_valid'] = tau
 
     sorted_preds = np.argsort(preds)
     sorted_y_true = np.argsort(y_true)
@@ -152,3 +160,11 @@ def eval_metrics(preds, y_true, mask=None):
     res['accuracy'] = np.sum(top_preds == top_y_true) / len(top_preds)
 
     return res
+
+
+def compute_without_invalids(func, preds, y_true, val=None):
+    val = 1000 if val is None else val
+    y_true = np.array(y_true)
+    mask = y_true < val
+    preds, y_true = preds[mask], y_true[mask]
+    return func(preds, y_true)
