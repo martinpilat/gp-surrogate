@@ -1,3 +1,4 @@
+import warnings
 from abc import abstractmethod
 
 import torch
@@ -82,27 +83,48 @@ class SurrogateBase:
         self.n_jobs = n_jobs
 
     @abstractmethod
-    def fit(self, inds, fitness, first_gen=False):
+    def fit(self, inds, fitness, first_gen=False, val_set=None):
         pass
 
     @abstractmethod
     def predict(self, inds):
         pass
 
+    @abstractmethod
+    def load(self, data):
+        pass
+
+    @abstractmethod
+    def save(self):
+        pass
+
 
 class FeatureSurrogate(SurrogateBase):
-    def __init__(self, pset, n_jobs=1, model=None):
+    _warned = False
+
+    def __init__(self, pset, n_jobs=1, n_estimators=100, max_depth=14, model=None, **kwargs):
         super().__init__(pset, n_jobs)
 
         if model is None:
-            model = ensemble.RandomForestRegressor(n_estimators=100, n_jobs=self.n_jobs, max_depth=14)
+            model = ensemble.RandomForestRegressor(n_estimators=n_estimators, n_jobs=self.n_jobs, max_depth=max_depth,
+                                                   **kwargs)
 
         self.pipeline = pipeline.Pipeline([
             ('impute', impute.SimpleImputer(strategy='median')),
             ('model', model)
         ])
 
-    def fit(self, inds, fitness, first_gen=False):
+    def load(self, data):
+        self.pipeline = data
+
+    def save(self):
+        return self.pipeline
+
+    def fit(self, inds, fitness, first_gen=False, val_set=None):
+        if not FeatureSurrogate._warned:
+            warnings.warn("Random forest surrogate doesn't evaluate the validation set during training.")
+            FeatureSurrogate._warned = True
+
         for ind in inds:
             ind.features = extract_features(ind, self.pset)
 
@@ -169,9 +191,12 @@ class NeuralNetSurrogate(SurrogateBase):
 
         self.metrics = metrics
 
-    def load_state_dict(self, state_dict):
+    def load(self, data):
         self._init_model()
-        self.model.load_state_dict(state_dict)
+        self.model.load_state_dict(data)
+
+    def save(self):
+        return self.model.state_dict()
 
     def _init_model(self):
         self.model = GINConcat(len(self.feature_template) + 2, n_features=self.n_features, n_convs=self.n_convs,
@@ -295,9 +320,12 @@ class TreeLSTMSurrogate(SurrogateBase):
         self.device = device
         self.metrics = metrics
 
-    def load_state_dict(self, state_dict):
+    def load(self, data):
         self._init_model()
-        self.model.load_state_dict(state_dict)
+        self.model.load_state_dict(data)
+
+    def save(self):
+        return self.model.state_dict()
 
     def _collate_fn(self, x):
         data = {}

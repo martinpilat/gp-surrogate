@@ -8,10 +8,22 @@ import torch
 import optuna
 import functools
 
-from gp_surrogate import surrogate
-from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander
-from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str, \
-    compute_without_invalids
+from gp_surrogate.benchmarks import ot_lunarlander
+from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str
+
+
+def suggest_params_rf(trial):
+    n_estimators = trial.suggest_int('n_estimators', 10, 1000, log=True)
+    max_depth = trial.suggest_int('max_depth', 5, 20)
+
+    kwargs = {
+        'n_estimators': n_estimators,
+        'max_depth': max_depth
+    }
+
+    trial.set_user_attr('model_kwargs', kwargs)
+
+    return kwargs
 
 
 def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
@@ -101,8 +113,12 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
 
     if surrogate == 'GNN':
         model_kwargs = suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs)
-    else:
+    elif surrogate == 'TNN':
         model_kwargs = suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs)
+    elif surrogate == 'RF':
+        model_kwargs = suggest_params_rf(trial)
+    else:
+        raise ValueError(f"Invalid surrogate: {surrogate}.")
     
     print(model_kwargs)
 
@@ -151,7 +167,7 @@ if __name__ == "__main__":
     parser.add_argument('--unique_train', '-U', action='store_true', help='Use only unique individuals for training')
     parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
     parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
-    parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna')
+    parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna', default=20)
 
     args = parser.parse_args()
 
@@ -192,13 +208,13 @@ if __name__ == "__main__":
     clf.fit(train_set[0], train_set[1], val_set=val_set)
 
     # save best/trained model
-    checkpoint = {'kwargs': model_kwargs, 'state_dict': clf.model.state_dict()}
+    checkpoint = {'kwargs': model_kwargs, 'state_dict': clf.save()}
     torch.save(checkpoint, args.checkpoint_path)
 
     # TODO TEST - DONE, move to predict then
     checkpoint = torch.load(args.checkpoint_path)
     model = surrogate_cls(pset, **checkpoint['kwargs'])
-    model.load_state_dict(checkpoint['state_dict'])
+    model.load(checkpoint['state_dict'])
     
     preds = model.predict(val_set[0])
     r = scipy.stats.spearmanr(preds, val_set[1])

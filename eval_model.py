@@ -16,12 +16,14 @@ sns.set()
 
 
 def plot_predictions(preds, y_true, save_dir=None, prefix=''):
+    plt.figure()
     sns.histplot(preds - y_true)
     if save_dir is None:
         plt.show()
     else:
         plt.savefig(os.path.join(save_dir, f'{prefix}diff_hist.png'))
 
+    plt.figure()
     plt.scatter(y_true, preds)
 
     if save_dir is None:
@@ -68,7 +70,7 @@ if __name__ == "__main__":
 
     checkpoint = torch.load(args.checkpoint_path)
     clf = surrogate_cls(pset, **checkpoint['kwargs'])
-    clf.load_state_dict(checkpoint['state_dict'])
+    clf.load(checkpoint['state_dict'])
 
     res = []
 

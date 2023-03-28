@@ -78,8 +78,10 @@ def get_model_class(name):
         surrogate_cls = surrogate.NeuralNetSurrogate
     elif name == 'TNN':
         surrogate_cls = surrogate.TreeLSTMSurrogate
+    elif name == 'RF':
+        surrogate_cls = surrogate.FeatureSurrogate
     else:
-        raise ValueError(f"Invalid surrogate name: {name}, valid: (GNN, TNN).")
+        raise ValueError(f"Invalid surrogate name: {name}, valid: (GNN, TNN, RF).")
     return surrogate_cls
 
 
