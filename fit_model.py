@@ -118,7 +118,7 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     return scipy.stats.spearmanr(preds, val_set[1]).correlation
 
 
-def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None):
+def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5):
     n_features = train_data[0][0].features.values.shape[1]
     n_aux_inputs = bench_data['variables']
     n_aux_outputs = 2 if 'output_transform' in bench_data and bench_data['output_transform'] == ot_lunarlander else 1
@@ -130,7 +130,7 @@ def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None):
         study = optuna.create_study(direction='maximize', study_name=study_name, storage=f'sqlite:///{study_name}.db') 
     else:
         study = optuna.create_study(direction='maximize')
-    study.optimize(opt_obj, n_trials=20)
+    study.optimize(opt_obj, n_trials=trials)
     print(study.best_params)
 
     return study
@@ -151,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument('--unique_train', '-U', action='store_true', help='Use only unique individuals for training')
     parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
     parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
+    parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna')
 
     args = parser.parse_args()
 
@@ -181,7 +182,7 @@ if __name__ == "__main__":
 
     # run search or model training
     if args.optuna:
-        study = run_optuna(train_set, val_set, bench_description, args.surrogate, args.study_name)
+        study = run_optuna(train_set, val_set, bench_description, args.surrogate, args.study_name, args.optuna_trials)
         model_kwargs = study.best_trial.user_attrs['model_kwargs']
     else:
         with open(args.kwargs_json, 'r') as f:
