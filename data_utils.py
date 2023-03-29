@@ -1,7 +1,6 @@
 import os
 import random
 import pickle
-import pygraphviz as pgv
 
 import numpy as np
 import scipy
@@ -14,6 +13,8 @@ from gp_surrogate.benchmarks import bench_by_name
 
 
 def plot_best_tree(inds, fitness, save_path):
+    import pygraphviz as pgv
+
     best_id = np.argmin(fitness)
 
     nodes, edges, labels = gp.graph(inds[best_id])
