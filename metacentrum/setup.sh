@@ -22,4 +22,6 @@ TMPDIR=$tmp_dir pip install "$pip_args" typing_extensions
 TMPDIR=$tmp_dir pip install "$pip_args" gym
 TMPDIR=$tmp_dir pip install "$pip_args" pytorch-tree-lstm
 conda install swig
+conda install seaborn
+pip install optuna
 TMPDIR=$tmp_dir pip install "$pip_args" gym[box2d]
