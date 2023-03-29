@@ -197,11 +197,12 @@ if __name__ == "__main__":
     if args.training_spec:
         val_set = []
         train_set = []
+        names = []
 
         with open(args.training_spec, 'r') as f:
             spec = json.load(f)
 
-            for s in spec:
+            for i, s in enumerate(spec):
                 all_files, bench_description, pset = init_bench(s['data_dir'])
                 
                 assert len(set(s['train_ids']).intersection(s['val_ids'])) == 0
@@ -215,6 +216,7 @@ if __name__ == "__main__":
                 
                 train_set.append(ts)
                 val_set.append(vs)
+                names.append(str(i) if 'name' not in s else s['name'])
 
     else:
         all_files, bench_description, pset = init_bench(args.data_dir)
@@ -229,6 +231,7 @@ if __name__ == "__main__":
         val_set = load_dataset(val_files, args.data_dir, rescale_val=args.rescale)
         train_set = [train_set]
         val_set = [val_set]
+        names = ['0']
 
     # run search or model training
     if args.optuna:
@@ -239,22 +242,20 @@ if __name__ == "__main__":
         with open(args.kwargs_json, 'r') as f:
             model_kwargs = json.load(f)
 
-    clf = surrogate_cls(pset, **model_kwargs)
-    clf.fit(train_set[0], train_set[1], val_set=val_set)
+    for ts, vs, n in zip(train_set, val_set, names):
+        clf = surrogate_cls(pset, **model_kwargs)
+        clf.fit(ts[0], ts[1], val_set=vs)
 
-    # save best/trained model
-    checkpoint = {'kwargs': model_kwargs, 'state_dict': clf.save()}
-    torch.save(checkpoint, args.checkpoint_path)
+        preds = clf.predict(vs[0])
+        r = scipy.stats.spearmanr(preds, vs[1])
+        print(f'Validation Spearman R: {r}')
 
-    # TODO TEST - DONE, move to predict then
-    checkpoint = torch.load(args.checkpoint_path)
-    model = surrogate_cls(pset, **checkpoint['kwargs'])
-    model.load(checkpoint['state_dict'])
-    
-    preds = model.predict(val_set[0])
-    r = scipy.stats.spearmanr(preds, val_set[1])
-    print(f'Model loaded from {args.checkpoint_path}, validation Spearman R: {r}')
+        # save best/trained model
+        checkpoint = {'kwargs': model_kwargs, 'state_dict': clf.save()}
+        check_name, ext = os.path.splitext(args.checkpoint_path)
+        check_path = f"{check_name}_{n}{ext}"
+        torch.save(checkpoint, check_path)
 
-    train_set_name = f"{os.path.splitext(args.checkpoint_path)[0]}_train_ids.pickle"
-    with open(train_set_name, 'wb') as f:
-        pickle.dump(set(inds_to_str(train_set[0])), f)
+        train_set_name = f"{os.path.splitext(check_path)[0]}_train_ids.pickle"
+        with open(train_set_name, 'wb') as f:
+            pickle.dump(set(inds_to_str(train_set[0])), f)
