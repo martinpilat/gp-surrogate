@@ -8,7 +8,7 @@ import torch
 import optuna
 import functools
 
-from gp_surrogate.benchmarks import ot_lunarlander
+from gp_surrogate.benchmarks import ot_lunarlander, ot_swimmer
 from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str, eval_metrics
 
 
@@ -26,15 +26,15 @@ def suggest_params_rf(trial):
     return kwargs
 
 
-def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
+def suggest_params_gnn(trial):
     #readout = trial.suggest_categorical('readout', ['concat', 'root', 'mean'])
     # if readout != 'root':
     #     use_global_node = trial.suggest_categorical('use_global_node', [False, True])
     include_features = trial.suggest_categorical('include_features', [False, True])
     #ranking = trial.suggest_categorical('ranking', [False, True])
-    mse_both = trial.suggest_categorical('mse_both', [False, True])
+    #mse_both = trial.suggest_categorical('mse_both', [False, True])
     use_auxiliary = trial.suggest_categorical('use_auxiliary', [False, True])
-    dropout = trial.suggest_float('dropout', 0.0, 1.0)
+    dropout = trial.suggest_float('dropout', 0.0, 0.8)
     auxiliary_weight = 0.0
     #sample_size = 0
     if use_auxiliary:
@@ -51,13 +51,10 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
               'n_epochs': n_epochs,
               'shuffle': False, 
               'include_features': include_features,
-              'n_features': n_features, 
               #'ranking': ranking,
-              'mse_both': mse_both,
+              #'mse_both': mse_both,
               'use_auxiliary': use_auxiliary, 
-              'auxiliary_weight': auxiliary_weight, 
-              'n_aux_inputs': n_aux_inputs, 
-              'n_aux_outputs': n_aux_outputs,
+              'auxiliary_weight': auxiliary_weight,
               'dropout': dropout, 
               'gnn_hidden': gnn_hidden, 
               'dense_hidden': dense_hidden,
@@ -69,13 +66,13 @@ def suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs):
 
     return kwargs
     
-def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
+def suggest_params_tnn(trial):
     use_root = trial.suggest_categorical('use_root', [False, True])
     include_features = trial.suggest_categorical('include_features', [False, True])
-    ranking = trial.suggest_categorical('ranking', [False, True])
-    mse_both = trial.suggest_categorical('mse_both', [False, True])
+    #ranking = trial.suggest_categorical('ranking', [False, True])
+    #mse_both = trial.suggest_categorical('mse_both', [False, True])
     use_auxiliary = trial.suggest_categorical('use_auxiliary', [False, True])
-    dropout = trial.suggest_float('dropout', 0.0, 1.0)
+    dropout = trial.suggest_float('dropout', 0.0, 0.8)
     auxiliary_weight = 0.0
     #sample_size = 0
     if use_auxiliary:
@@ -90,14 +87,11 @@ def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
               'use_global_node': False,
               'n_epochs': n_epochs,
               'shuffle': False, 
-              'include_features': include_features, 
-              'n_features': n_features,
-              'ranking': ranking,
-              'mse_both': mse_both, 
+              'include_features': include_features,
+              #'ranking': ranking,
+              #'mse_both': mse_both,
               'use_auxiliary': use_auxiliary, 
               'auxiliary_weight': auxiliary_weight,
-              'n_aux_inputs': n_aux_inputs,
-              'n_aux_outputs': n_aux_outputs,
               'aux_hidden': aux_hidden, 
               'dropout': dropout, 
               'tnn_hidden': tnn_hidden,
@@ -108,13 +102,13 @@ def suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs):
 
     return kwargs
 
-def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs, surrogate, metric='spearman'):
+def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman'):
     surrogate_cls = get_model_class(surrogate)
 
     if surrogate == 'GNN':
-        model_kwargs = suggest_params_gnn(trial, n_features, n_aux_inputs, n_aux_outputs)
+        model_kwargs = suggest_params_gnn(trial)
     elif surrogate == 'TNN':
-        model_kwargs = suggest_params_tnn(trial, n_features, n_aux_inputs, n_aux_outputs)
+        model_kwargs = suggest_params_tnn(trial)
     elif surrogate == 'RF':
         model_kwargs = suggest_params_rf(trial)
     else:
@@ -123,9 +117,10 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     print(model_kwargs)
 
     metrics = []
-    for ts, vs in zip(train_set, val_set):
-        try:        
-            clf = surrogate_cls(pset, **model_kwargs)
+    for ts, vs, bench in zip(train_set, val_set, bench_data):
+        try:
+            nf, nai, nao = get_n_aux_features(ts, bench)
+            clf = surrogate_cls(pset, n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
 
             clf.fit(ts[0], ts[1], val_set=vs)
             preds = clf.predict(vs[0])
@@ -138,18 +133,26 @@ def objective(trial, train_set, val_set, n_features, n_aux_inputs, n_aux_outputs
     return sum(metrics)/len(metrics)
 
 
-def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5, metric='spearman'):
-    n_features = train_data[0][0][0].features.values.shape[1]
+def _is_multioutput(bench_data):
+    return bench_data['output_transform'] == ot_lunarlander or bench_data['output_transform'] == ot_swimmer
+
+
+def get_n_aux_features(train_data, bench_data):
+    n_features = train_data[0][0].features.values.shape[1]
     n_aux_inputs = bench_data['variables']
-    n_aux_outputs = 2 if 'output_transform' in bench_data and bench_data['output_transform'] == ot_lunarlander else 1
-    opt_obj = functools.partial(objective, train_set=train_data, val_set=val_data,
-                                n_features=n_features, n_aux_inputs=n_aux_inputs,
-                                n_aux_outputs=n_aux_outputs, surrogate=surrogate, metric=metric)
-    study = None
+    n_aux_outputs = 2 if 'output_transform' in bench_data and _is_multioutput(bench_data) else 1
+    return n_features, n_aux_inputs, n_aux_outputs
+
+
+def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5, metric='spearman'):
+    opt_obj = functools.partial(objective, train_set=train_data, val_set=val_data, bench_data=bench_data,
+                                surrogate=surrogate, metric=metric)
+
     if study_name:
         study = optuna.create_study(direction='maximize', study_name=study_name, storage=f'sqlite:///{study_name}.db') 
     else:
         study = optuna.create_study(direction='maximize')
+
     study.optimize(opt_obj, n_trials=trials)
     print(study.best_params)
 
@@ -198,6 +201,7 @@ if __name__ == "__main__":
         val_set = []
         train_set = []
         names = []
+        bench_data = []
 
         with open(args.training_spec, 'r') as f:
             spec = json.load(f)
@@ -211,12 +215,13 @@ if __name__ == "__main__":
                 val_files = get_files_by_index(all_files, s['val_ids'])
 
                 ts = load_dataset(train_files, s['data_dir'], data_size=s['train_size'], unique_only=s['unique_train'],
-                                rescale_val=s['rescale'])
+                                  rescale_val=s['rescale'])
                 vs = load_dataset(val_files, s['data_dir'], rescale_val=s['rescale'])
                 
                 train_set.append(ts)
                 val_set.append(vs)
                 names.append(str(i) if 'name' not in s else s['name'])
+                bench_data.append(bench_description)
 
     else:
         all_files, bench_description, pset = init_bench(args.data_dir)
@@ -232,18 +237,20 @@ if __name__ == "__main__":
         train_set = [train_set]
         val_set = [val_set]
         names = ['0']
+        bench_data = [bench_description]
 
     # run search or model training
     if args.optuna:
-        study = run_optuna(train_set, val_set, bench_description, args.surrogate, study_name=args.study_name,
+        study = run_optuna(train_set, val_set, bench_data, args.surrogate, study_name=args.study_name,
                            trials=args.optuna_trials, metric=args.metric)
         model_kwargs = study.best_trial.user_attrs['model_kwargs']
     else:
         with open(args.kwargs_json, 'r') as f:
             model_kwargs = json.load(f)
 
-    for ts, vs, n in zip(train_set, val_set, names):
-        clf = surrogate_cls(pset, **model_kwargs)
+    for ts, vs, n, bd in zip(train_set, val_set, names, bench_data):
+        nf, nai, nao = get_n_aux_features(ts, bd)
+        clf = surrogate_cls(pset, n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
         clf.fit(ts[0], ts[1], val_set=vs)
 
         preds = clf.predict(vs[0])
