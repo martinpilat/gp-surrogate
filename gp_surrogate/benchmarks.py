@@ -74,7 +74,7 @@ def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
         pset.addPrimitive(inverse, 1)
         pset.addPrimitive(operator.neg, 1)
         pset.addPrimitive(safesqrt, 1)
-        pset.addEphemeralConstant('keijzer_const', lambda: random.gauss(0, 5))
+        pset.addEphemeralConstant(f'keijzer_const_{benchmark_name}', lambda: random.gauss(0, 5))
         return pset
 
     # in fact, all the numbers in the following are float, the int is used only to ensure that the constants are used
@@ -89,11 +89,11 @@ def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
         pset.addPrimitive(v_f1, [float, int], float, name='V_F1')
         pset.addPrimitive(v_f2, [float, int], float, name='V_F2')
         pset.addPrimitive(operator.mul, [float, int], float, name='V_F3')
-        pset.addEphemeralConstant('vf_const', lambda: random.uniform(-5, 5), int)
+        pset.addEphemeralConstant(f'vf_const_{benchmark_name}', lambda: random.uniform(-5, 5), int)
         pset.addPrimitive(id, [int], int, name='id')
         return pset
 
-    if benchmark_name.startswith('nguyen') or benchmark_name.startswith('pagie'):
+    if benchmark_name.startswith('nguyen') or benchmark_name.startswith('pagie') or benchmark_name.startswith('rl_'):
         pset = gp.PrimitiveSet('MAIN', num_variables)
         pset.addPrimitive(operator.add, 2)
         pset.addPrimitive(operator.sub, 2)
@@ -120,7 +120,7 @@ def get_primitive_set_for_benchmark(benchmark_name: str, num_variables: int):
         pset.addPrimitive(inverse, 1, name='inverse')
         pset.addPrimitive(tan, 1)
         pset.addPrimitive(math.tanh, 1)
-        pset.addEphemeralConstant('korns_const', lambda: random.uniform(-1e10, 1e10))
+        pset.addEphemeralConstant(f'korns_const_{benchmark_name}', lambda: random.uniform(-1e10, 1e10))
         return pset
 
     if benchmark_name.startswith('lander'):
@@ -191,31 +191,31 @@ benchmark_description = [
      'env_kwargs': {},
      'variables': 4,
      'output_transform': ot_cartpole,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 4)},
+     'pset': get_primitive_set_for_benchmark('rl_cartpole', 4)},
     {'name': 'rl_mountaincar',
      'env_name': 'MountainCar-v0',
      'env_kwargs': {},
      'variables': 2,
      'output_transform': ot_mountaincar,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 2)},
+     'pset': get_primitive_set_for_benchmark('rl_mountaincar', 2)},
     {'name': 'rl_acrobot',
      'env_name': 'Acrobot-v1',
      'env_kwargs': {},
      'variables': 6,
      'output_transform': ot_acrobot,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 6)},
+     'pset': get_primitive_set_for_benchmark('rl_acrobot', 6)},
     {'name': 'rl_pendulum',
      'env_name': 'Pendulum-v1',
      'env_kwargs': {},
      'variables': 3,
      'output_transform': ot_pendulum,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 3)},
+     'pset': get_primitive_set_for_benchmark('rl_pendulum', 3)},
     {'name': 'rl_mountaincarcontinuous',
      'env_name': 'MountainCarContinuous-v0',
      'env_kwargs': {},
      'variables': 2,
      'output_transform': ot_mountaincarcont,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 2)},
+     'pset': get_primitive_set_for_benchmark('rl_mountaincartcontinuous', 2)},
     {'name': 'rl_lunarlander',
      'env_name': 'LunarLanderContinuous-v2',
      'env_kwargs': {},
@@ -227,23 +227,23 @@ benchmark_description = [
      'env_kwargs': {},
      'variables': 4,
      'output_transform': ot_invpendulum,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 4)},
+     'pset': get_primitive_set_for_benchmark('rl_invpendulum', 4)},
     {'name': 'rl_invdouble',
      'env_name': "InvertedDoublePendulum-v4",
      'env_kwargs': {},
      'variables': 11,
      'output_transform': ot_mountaincarcont,
-     'pset': get_primitive_set_for_benchmark('pagie-1', 11)},
+     'pset': get_primitive_set_for_benchmark('rl_invdouble', 11)},
     {'name': 'rl_reacher',
      'env_name': "Reacher-v4",
      'env_kwargs': {},
      'variables': 11,
      'output_transform': ot_swimmer,
-     'pset': get_primitive_set_for_benchmark('lander', 11)},
+     'pset': get_primitive_set_for_benchmark('rl_reacher', 11)},
     {'name': 'rl_swimmer',
      'env_name': "Swimmer-v4",
      'env_kwargs': {},
      'variables': 8,
      'output_transform': ot_swimmer,
-     'pset': get_primitive_set_for_benchmark('lander', 8)}
+     'pset': get_primitive_set_for_benchmark('rl_swimmer', 8)}
 ]

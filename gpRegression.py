@@ -58,6 +58,8 @@ if args.use_surrogate:
         parser.print_help()
 
 bench_number = args.problem_number
+bench_name = benchmark_description[bench_number]['name']
+safe_bname = bench_name.replace('-', '_')
 #bench_number = 0
 
 # get the primitive set for the selected benchmark
@@ -65,12 +67,12 @@ pset = benchmark_description[bench_number]['pset']
 
 # create the types for fitness and individuals
 creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
-creator.create('Individual', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
+creator.create(f'Individual_{safe_bname}', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
 
 # create the toolbox
 toolbox = base.Toolbox()
 toolbox.register("expr", gp.genHalfAndHalf, pset=pset, min_=1, max_=5)
-toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.expr)
+toolbox.register("individual", tools.initIterate, eval(f'creator.Individual_{safe_bname}'), toolbox.expr)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 toolbox.register("compile", gp.compile, pset=pset)
 

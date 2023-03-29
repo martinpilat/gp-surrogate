@@ -11,12 +11,14 @@ parser.add_argument('--problem_number', '-P', type=int, help='The number of prob
 args = parser.parse_args()
 
 pset = benchmarks.benchmark_description[args.problem_number]
+bname = benchmarks.benchmark_description[args.problem_number]['name']
+safe_bname = bname.replace('-', '_')
 
 # create the types for fitness and individuals
 creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
-creator.create('Individual', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
+creator.create(f'Individual_{safe_bname}', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
 
-with open('train_data/surrogate.RAND-AUX.keijzer-6.v1.6c6d8c8a46.13.pkl', 'rb') as f:
+with open('train_data/baseline.keijzer-6.v1.bfc57a45e1.r0.g.58.pkl', 'rb') as f:
     data = pickle.load(f)
 
 print("individual:" , data[0][0])

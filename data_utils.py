@@ -100,13 +100,14 @@ def get_files_by_index(files, index_list):
 def init_bench(data_dir):
     all_files = os.listdir(data_dir)
     bench_name = all_files[0].split('.')[-7]
+    safe_bname = bench_name.replace('-', '_')
 
     bench_description = bench_by_name(bench_name)
     pset = bench_description['pset']
 
     # create the types for fitness and individuals
     creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
-    creator.create('Individual', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
+    creator.create(f'Individual_{safe_bname}', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
 
     return all_files, bench_description, pset
 
