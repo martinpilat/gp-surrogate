@@ -239,11 +239,11 @@ benchmark_description = [
      'env_kwargs': {},
      'variables': 11,
      'output_transform': ot_swimmer,
-     'pset': get_primitive_set_for_benchmark('rl_reacher', 11)},
+     'pset': get_primitive_set_for_benchmark('lander', 11)},
     {'name': 'rl_swimmer',
      'env_name': "Swimmer-v4",
      'env_kwargs': {},
      'variables': 8,
      'output_transform': ot_swimmer,
-     'pset': get_primitive_set_for_benchmark('rl_swimmer', 8)}
+     'pset': get_primitive_set_for_benchmark('lander', 8)}
 ]

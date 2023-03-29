@@ -25,3 +25,4 @@ conda install swig
 conda install seaborn
 pip install optuna
 TMPDIR=$tmp_dir pip install "$pip_args" gym[box2d]
+TMPDIR=$tmp_dir pip install "$pip_args" gym[mujoco]
