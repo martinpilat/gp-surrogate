@@ -172,7 +172,7 @@ if __name__ == "__main__":
     parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
     parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
     parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna', default=20)
-    parser.add_argument('--training_spec', '-f', type=str, help='File with training/validation specification', default=None)
+    parser.add_argument('--training_spec', '-f', type=str, help='File with training/val specification', default=None)
     parser.add_argument('--metric', '-M', type=str, help='Which metric to optimize', default='spearman')
 
     args = parser.parse_args()
@@ -198,7 +198,6 @@ if __name__ == "__main__":
         val_set = []
         train_set = []
 
-        spec = None
         with open(args.training_spec, 'r') as f:
             spec = json.load(f)
 
@@ -233,7 +232,8 @@ if __name__ == "__main__":
 
     # run search or model training
     if args.optuna:
-        study = run_optuna(train_set, val_set, bench_description, args.surrogate, args.study_name, args.optuna_trials)
+        study = run_optuna(train_set, val_set, bench_description, args.surrogate, study_name=args.study_name,
+                           trials=args.optuna_trials, metric=args.metric)
         model_kwargs = study.best_trial.user_attrs['model_kwargs']
     else:
         with open(args.kwargs_json, 'r') as f:
