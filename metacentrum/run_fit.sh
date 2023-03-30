@@ -12,6 +12,7 @@ cd $GP_DIR
 cd gp-surrogate 
 python fit_model.py \
 	-S $MODEL \
+	-D $GP_DIR \
 	-C "$GP_DIR/optuna_out/$OUTPTH/model_$OUTPTH.pt" \
 	-f $CFG \
 	-K $KOPT \
