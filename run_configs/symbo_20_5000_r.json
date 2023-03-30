@@ -1,0 +1,26 @@
+[
+    {
+        "data_dir": "baseline_2",
+        "train_ids": "0-20",
+        "val_ids": [20],
+        "train_size": 5000,
+        "rescale": true,
+        "unique_train": true
+    },
+    {
+        "data_dir": "baseline_3",
+        "train_ids": "0-20",
+        "val_ids": [20],
+        "train_size": 5000,
+        "rescale": true,
+        "unique_train": true
+    },
+    {
+        "data_dir": "baseline_4",
+        "train_ids": "0-20",
+        "val_ids": [20],
+        "train_size": 5000,
+        "rescale": true,
+        "unique_train": true
+    }
+]

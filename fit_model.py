@@ -167,7 +167,7 @@ def rescale_and_save_val(train, val, name, save_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run GP with surrogate model')
     parser.add_argument('--surrogate', '-S', type=str, help='Which surrogate to use (GNN, TNN)', default='GNN')
-    parser.add_argument('--data_dir', '-D', type=str, help='Dataset directory')
+    parser.add_argument('--data_dir', '-D', type=str, help='Dataset directory', default=None)
     parser.add_argument('--checkpoint_path', '-C', type=str, help='Path to save checkpoint to.')
     parser.add_argument('--train_ids', '-T', type=int, nargs='+', required=False,
                         help='Generation indices for the train set.')
@@ -214,7 +214,8 @@ if __name__ == "__main__":
             spec = json.load(f)
 
             for i, s in enumerate(spec):
-                all_files, bench_description = init_bench(s['data_dir'])
+                data_dir = s['data_dir'] if args.data_dir is None else os.path.join(args.data_dir, s['data_dir'])
+                all_files, bench_description = init_bench(data_dir)
 
                 if isinstance(s['train_ids'], str):
                     lower, upper = s['train_ids'].split('-')
@@ -225,8 +226,8 @@ if __name__ == "__main__":
                 train_files = get_files_by_index(all_files, s['train_ids'])
                 val_files = get_files_by_index(all_files, s['val_ids'])
 
-                ts = load_dataset(train_files, s['data_dir'], data_size=s['train_size'], unique_only=s['unique_train'])
-                vs = load_dataset(val_files, s['data_dir'])
+                ts = load_dataset(train_files, data_dir, data_size=s['train_size'], unique_only=s['unique_train'])
+                vs = load_dataset(val_files, data_dir)
                 n = str(i) if 'name' not in s else s['name']
 
                 if s['rescale']:
