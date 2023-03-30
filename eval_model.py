@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from data_utils import get_files_by_index, init_bench, load_dataset, get_model_class, eval_metrics, inds_to_str
+from data_utils import get_files_by_index, init_bench, load_dataset, get_model_class, eval_metrics, inds_to_str, \
+    rescale_fitness, get_n_aux_features
 
 sns.set()
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument('--test_ids', '-V', type=int, nargs='*', default=[], help='Gen indices for the test set.')
     parser.add_argument('--train_individuals', '-T', type=str, default=None,
                         help='Individuals that were used for training.')
-    parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
+    parser.add_argument('--rescale_path', '-R', type=str, help='Name of the rescale txt file.', default=None)
     parser.add_argument('--out_dir', '-O', type=str, help='Directory path where to write outputs to.', default=None)
 
     args = parser.parse_args()
@@ -51,10 +52,17 @@ if __name__ == "__main__":
         else:
             warnings.warn(f"Output directory already exists: {args.out_dir}")
 
-    all_files, bench_description, pset = init_bench(args.data_dir)
+    r_val = None
+    if args.rescale_path is not None:
+        with open(args.rescale_path, 'r') as f:
+            r_val = float(f.readline().strip())
+
+    all_files, bench_description = init_bench(args.data_dir)
 
     test_files = get_files_by_index(all_files, args.test_ids)
-    test_set = load_dataset(test_files, args.data_dir, rescale_val=args.rescale)
+    test_set = load_dataset(test_files, args.data_dir)
+    if r_val is not None:
+        test_set = test_set[0], rescale_fitness(test_set[1], r_val)
 
     # mask - shared individuals between train and test set
     mask = None
@@ -67,9 +75,10 @@ if __name__ == "__main__":
         mask = np.array([(str(ind) not in common) for ind in test_set[0]])
 
     surrogate_cls = get_model_class(args.surrogate)
+    nf, nai, nao = get_n_aux_features(test_set, bench_description)
 
     checkpoint = torch.load(args.checkpoint_path)
-    clf = surrogate_cls(pset, **checkpoint['kwargs'])
+    clf = surrogate_cls(bench_description['pset'], n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **checkpoint['kwargs'])
     clf.load(checkpoint['state_dict'])
 
     res = []
@@ -82,17 +91,17 @@ if __name__ == "__main__":
 
     preds = clf.predict(test_set[0])
     y_true = np.array(test_set[1])
-    metrics = eval_metrics(preds, y_true, val=args.rescale)
+    metrics = eval_metrics(preds, y_true, val=r_val)
     print("Full metrics:")
     print_and_update(metrics, 'all')
 
     if mask is not None:
         print("\nNew individuals only:")
-        metrics = eval_metrics(preds, y_true, mask=mask, val=args.rescale)
+        metrics = eval_metrics(preds, y_true, mask=mask, val=r_val)
         print_and_update(metrics, 'new')
 
         print("\nSeen individuals only:")
-        metrics = eval_metrics(preds, y_true, mask=~mask, val=args.rescale)
+        metrics = eval_metrics(preds, y_true, mask=~mask, val=r_val)
         print_and_update(metrics, 'seen')
 
     if args.out_dir is not None:
@@ -102,7 +111,7 @@ if __name__ == "__main__":
     plot_predictions(preds, y_true, save_dir=args.out_dir)
 
     # plot only valid individuals
-    lim = 1000 if args.rescale is None else args.rescale
+    lim = 1000 if r_val is None else r_val
     mask = y_true < lim
     preds = preds[mask]
     y_true = y_true[mask]

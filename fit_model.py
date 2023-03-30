@@ -8,8 +8,8 @@ import torch
 import optuna
 import functools
 
-from gp_surrogate.benchmarks import ot_lunarlander, ot_swimmer
-from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str, eval_metrics
+from data_utils import load_dataset, get_model_class, get_files_by_index, init_bench, inds_to_str, eval_metrics, \
+    get_rescale_val, rescale_fitness, get_n_aux_features
 
 
 def suggest_params_rf(trial):
@@ -120,7 +120,7 @@ def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman
     for ts, vs, bench in zip(train_set, val_set, bench_data):
         try:
             nf, nai, nao = get_n_aux_features(ts, bench)
-            clf = surrogate_cls(pset, n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
+            clf = surrogate_cls(bench['pset'], n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
 
             clf.fit(ts[0], ts[1], val_set=vs)
             preds = clf.predict(vs[0])
@@ -131,17 +131,6 @@ def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman
         metrics.append(eval_metrics(preds, vs[1])[metric])
 
     return sum(metrics)/len(metrics)
-
-
-def _is_multioutput(bench_data):
-    return bench_data['output_transform'] == ot_lunarlander or bench_data['output_transform'] == ot_swimmer
-
-
-def get_n_aux_features(train_data, bench_data):
-    n_features = train_data[0][0].features.values.shape[1]
-    n_aux_inputs = bench_data['variables']
-    n_aux_outputs = 2 if 'output_transform' in bench_data and _is_multioutput(bench_data) else 1
-    return n_features, n_aux_inputs, n_aux_outputs
 
 
 def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5, metric='spearman'):
@@ -159,6 +148,19 @@ def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, tri
     return study
 
 
+def rescale_and_save_val(train, val, name, save_path):
+    save_path = f"{os.path.splitext(save_path)[0]}_{name}_rescale.txt"
+
+    r_val = get_rescale_val(train[1])
+    train_fitness = rescale_fitness(train[1], r_val)
+    val_fitness = rescale_fitness(val[1], r_val)
+
+    with open(save_path, 'w+') as f:
+        f.write(f"{r_val}\n")
+
+    return (train[0], train_fitness), (val[0], val_fitness)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run GP with surrogate model')
     parser.add_argument('--surrogate', '-S', type=str, help='Which surrogate to use (GNN, TNN)', default='GNN')
@@ -173,7 +175,8 @@ if __name__ == "__main__":
     parser.add_argument('--force', '-F', action='store_true', help='If True, overwrite existing checkpoints.')
     parser.add_argument('--unique_train', '-U', action='store_true', help='Use only unique individuals for training')
     parser.add_argument('--study_name', type=str, help='Optuna study name', default=None)
-    parser.add_argument('--rescale', '-R', type=float, help='New value for invalid individuals.', default=None)
+    parser.add_argument('--rescale', '-R', action='store_true', help='If True, replace invalid ind fitness with train '
+                                                                     'max + 1.')
     parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna', default=20)
     parser.add_argument('--training_spec', '-f', type=str, help='File with training/val specification', default=None)
     parser.add_argument('--metric', '-M', type=str, help='Which metric to optimize', default='spearman')
@@ -207,7 +210,7 @@ if __name__ == "__main__":
             spec = json.load(f)
 
             for i, s in enumerate(spec):
-                all_files, bench_description, pset = init_bench(s['data_dir'])
+                all_files, bench_description = init_bench(s['data_dir'])
 
                 if isinstance(s['train_ids'], str):
                     lower, upper = s['train_ids'].split('-')
@@ -218,26 +221,32 @@ if __name__ == "__main__":
                 train_files = get_files_by_index(all_files, s['train_ids'])
                 val_files = get_files_by_index(all_files, s['val_ids'])
 
-                ts = load_dataset(train_files, s['data_dir'], data_size=s['train_size'], unique_only=s['unique_train'],
-                                  rescale_val=s['rescale'])
-                vs = load_dataset(val_files, s['data_dir'], rescale_val=s['rescale'])
+                ts = load_dataset(train_files, s['data_dir'], data_size=s['train_size'], unique_only=s['unique_train'])
+                vs = load_dataset(val_files, s['data_dir'])
+                n = str(i) if 'name' not in s else s['name']
+
+                if args.rescale:
+                    ts, vs = rescale_and_save_val(ts, vs, n, args.checkpoint_path)
                 
                 train_set.append(ts)
                 val_set.append(vs)
-                names.append(str(i) if 'name' not in s else s['name'])
+                names.append(n)
                 bench_data.append(bench_description)
 
     else:
-        all_files, bench_description, pset = init_bench(args.data_dir)
+        all_files, bench_description = init_bench(args.data_dir)
 
         assert len(set(args.train_ids).intersection(set(args.val_ids))) == 0
 
         train_files = get_files_by_index(all_files, args.train_ids)
         val_files = get_files_by_index(all_files, args.val_ids)
 
-        train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size, unique_only=args.unique_train,
-                                rescale_val=args.rescale)
-        val_set = load_dataset(val_files, args.data_dir, rescale_val=args.rescale)
+        train_set = load_dataset(train_files, args.data_dir, data_size=args.train_size, unique_only=args.unique_train)
+        val_set = load_dataset(val_files, args.data_dir)
+
+        if args.rescale:
+            train_set, val_set = rescale_and_save_val(train_set, val_set, '0', args.checkpoint_path)
+
         train_set = [train_set]
         val_set = [val_set]
         names = ['0']
@@ -254,7 +263,7 @@ if __name__ == "__main__":
 
     for ts, vs, n, bd in zip(train_set, val_set, names, bench_data):
         nf, nai, nao = get_n_aux_features(ts, bd)
-        clf = surrogate_cls(pset, n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
+        clf = surrogate_cls(bd['pset'], n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
         clf.fit(ts[0], ts[1], val_set=vs)
 
         preds = clf.predict(vs[0])
@@ -269,4 +278,4 @@ if __name__ == "__main__":
 
         train_set_name = f"{os.path.splitext(check_path)[0]}_train_ids.pickle"
         with open(train_set_name, 'wb') as f:
-            pickle.dump(set(inds_to_str(train_set[0])), f)
+            pickle.dump(set(inds_to_str(ts[0])), f)

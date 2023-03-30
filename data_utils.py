@@ -9,7 +9,7 @@ import sklearn.metrics
 from deap import creator, base, gp
 
 from gp_surrogate import surrogate
-from gp_surrogate.benchmarks import bench_by_name
+from gp_surrogate.benchmarks import bench_by_name, ot_lunarlander, ot_swimmer
 
 
 def plot_best_tree(inds, fitness, save_path):
@@ -40,7 +40,7 @@ def get_common_inds(inds1, inds2):
     return inds1.intersection(inds2)
 
 
-def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False, rescale_val=None):
+def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False):
     if not len(file_list):
         return None
 
@@ -68,10 +68,15 @@ def load_dataset(file_list, dir_path=None, data_size=None, unique_only=False, re
         inds = [inds[i] for i in indices]
         fitness = [fitness[i] for i in indices]
 
-    if rescale_val is not None:
-        fitness = [(f if f < 1000 else rescale_val) for f in fitness]
-
     return inds, fitness
+
+
+def rescale_fitness(fitness, val, invalid=1000):
+    return [(f if f < invalid else val) for f in fitness]
+
+
+def get_rescale_val(fitness, invalid=1000):
+    return max([f for f in fitness if f < invalid]) + 1
 
 
 def get_model_class(name):
@@ -109,7 +114,18 @@ def init_bench(data_dir):
     creator.create('FitnessMin', base.Fitness, weights=(-1.0,))
     creator.create(f'Individual_{safe_bname}', gp.PrimitiveTree, fitness=creator.FitnessMin, pset=pset)
 
-    return all_files, bench_description, pset
+    return all_files, bench_description
+
+
+def _is_multioutput(bench_data):
+    return bench_data['output_transform'] == ot_lunarlander or bench_data['output_transform'] == ot_swimmer
+
+
+def get_n_aux_features(train_data, bench_data):
+    n_features = train_data[0][0].features.values.shape[1]
+    n_aux_inputs = bench_data['variables']
+    n_aux_outputs = 2 if 'output_transform' in bench_data and _is_multioutput(bench_data) else 1
+    return n_features, n_aux_inputs, n_aux_outputs
 
 
 def top_third(sorted_ix):
