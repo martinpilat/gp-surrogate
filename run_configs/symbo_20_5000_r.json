@@ -1,6 +1,6 @@
 [
     {
-        "data_dir": "baseline_2",
+        "data_dir": "baseline_2/run_0",
         "train_ids": "0-20",
         "val_ids": [20],
         "train_size": 5000,
@@ -8,7 +8,7 @@
         "unique_train": true
     },
     {
-        "data_dir": "baseline_3",
+        "data_dir": "baseline_3/run_0",
         "train_ids": "0-20",
         "val_ids": [20],
         "train_size": 5000,
@@ -16,7 +16,7 @@
         "unique_train": true
     },
     {
-        "data_dir": "baseline_4",
+        "data_dir": "baseline_4/run_0",
         "train_ids": "0-20",
         "val_ids": [20],
         "train_size": 5000,
