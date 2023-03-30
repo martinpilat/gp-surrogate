@@ -102,8 +102,9 @@ def suggest_params_tnn(trial):
 
     return kwargs
 
-def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman'):
+def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman', device=None):
     surrogate_cls = get_model_class(surrogate)
+    dev_args = {'device': device}
 
     if surrogate == 'GNN':
         model_kwargs = suggest_params_gnn(trial)
@@ -111,6 +112,7 @@ def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman
         model_kwargs = suggest_params_tnn(trial)
     elif surrogate == 'RF':
         model_kwargs = suggest_params_rf(trial)
+        dev_args = {}
     else:
         raise ValueError(f"Invalid surrogate: {surrogate}.")
     
@@ -120,7 +122,8 @@ def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman
     for ts, vs, bench in zip(train_set, val_set, bench_data):
         try:
             nf, nai, nao = get_n_aux_features(ts, bench)
-            clf = surrogate_cls(bench['pset'], n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **model_kwargs)
+            clf = surrogate_cls(bench['pset'], n_features=nf, n_aux_inputs=nai, n_aux_outputs=nao, **dev_args,
+                                **model_kwargs)
 
             clf.fit(ts[0], ts[1], val_set=vs)
             preds = clf.predict(vs[0])
@@ -133,9 +136,9 @@ def objective(trial, train_set, val_set, bench_data, surrogate, metric='spearman
     return sum(metrics)/len(metrics)
 
 
-def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5, metric='spearman'):
+def run_optuna(train_data, val_data, bench_data, surrogate, study_name=None, trials=5, metric='spearman', device=None):
     opt_obj = functools.partial(objective, train_set=train_data, val_set=val_data, bench_data=bench_data,
-                                surrogate=surrogate, metric=metric)
+                                surrogate=surrogate, metric=metric, device=device)
 
     if study_name:
         study = optuna.create_study(direction='maximize', study_name=study_name, storage=f'sqlite:///{study_name}.db') 
@@ -180,6 +183,7 @@ if __name__ == "__main__":
     parser.add_argument('--optuna_trials', '-K', type=int, help='Number of trials for optuna', default=20)
     parser.add_argument('--training_spec', '-f', type=str, help='File with training/val specification', default=None)
     parser.add_argument('--metric', '-M', type=str, help='Which metric to optimize', default='spearman')
+    parser.add_argument('--device', type=str, help='Device for neural nets.', default=None)
 
     args = parser.parse_args()
 
@@ -225,7 +229,7 @@ if __name__ == "__main__":
                 vs = load_dataset(val_files, s['data_dir'])
                 n = str(i) if 'name' not in s else s['name']
 
-                if args.rescale:
+                if s['rescale']:
                     ts, vs = rescale_and_save_val(ts, vs, n, args.checkpoint_path)
                 
                 train_set.append(ts)
@@ -255,7 +259,7 @@ if __name__ == "__main__":
     # run search or model training
     if args.optuna:
         study = run_optuna(train_set, val_set, bench_data, args.surrogate, study_name=args.study_name,
-                           trials=args.optuna_trials, metric=args.metric)
+                           trials=args.optuna_trials, metric=args.metric, device=args.device)
         model_kwargs = study.best_trial.user_attrs['model_kwargs']
     else:
         with open(args.kwargs_json, 'r') as f:
