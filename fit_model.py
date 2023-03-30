@@ -208,6 +208,10 @@ if __name__ == "__main__":
 
             for i, s in enumerate(spec):
                 all_files, bench_description, pset = init_bench(s['data_dir'])
+
+                if isinstance(s['train_ids'], str):
+                    lower, upper = s['train_ids'].split('-')
+                    s['train_ids'] = [i for i in range(int(lower), int(upper))]
                 
                 assert len(set(s['train_ids']).intersection(s['val_ids'])) == 0
 

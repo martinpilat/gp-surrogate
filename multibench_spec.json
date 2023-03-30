@@ -1,0 +1,18 @@
+[
+    {
+        "data_dir": "train_data/train_data/",
+        "train_ids": "0-3",
+        "val_ids": [3],
+        "train_size": 200,
+        "rescale": false,
+        "unique_train": true
+    },
+    {
+        "data_dir": "train_data_lun/train_data/",
+        "train_ids": "0-4",
+        "val_ids": [4],
+        "train_size": 200,
+        "rescale": false,
+        "unique_train": true
+    }
+]
