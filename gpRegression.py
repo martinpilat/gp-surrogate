@@ -138,13 +138,21 @@ if surrogate_name == 'IDEAL':
 def eval_symb_reg(individual, points, values):
         try:
             func = toolbox.compile(expr=individual)
-            outputs = [func(*z) for z in points]
-            io_feat = [(i, o) for i, o in zip(points, outputs)]
+            outputs = []
+            io_feat = []
+            for z in points:
+                out = func(*z)
+                outputs.append(out)
+                io_feat.append((z, out))
             sqerrors = [(o - valx)**2 for o, valx in zip(outputs, values)]
             if args.use_auxiliary:
                 individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
             return math.log10(math.sqrt(math.fsum(sqerrors)) / len(points)),
         except OverflowError:
+            if args.use_auxiliary and io_feat:
+                individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
+            elif args.use_auxiliary:
+                individual.io = np.array([points[0]]), np.array([0])
             return 1000.0,
 
 def eval_rl(individual, environment, output_transform):
@@ -168,6 +176,10 @@ def eval_rl(individual, environment, output_transform):
             individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
         return -R/5,
     except OverflowError:
+        if args.use_auxiliary and io_feat:
+            individual.io = np.array([io[0] for io in io_feat]), np.array([io[1] for io in io_feat])
+        elif args.use_auxiliary:
+            individual.io = np.array([obs]), np.array([0])
         return 100000.0,
 
 # register the selection and genetic operators - tournament selection and, one point crossover and sub-tree mutation
