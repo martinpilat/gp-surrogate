@@ -226,7 +226,8 @@ if __name__ == "__main__":
                 train_files = get_files_by_index(all_files, s['train_ids'])
                 val_files = get_files_by_index(all_files, s['val_ids'])
 
-                ts = load_dataset(train_files, data_dir, data_size=s['train_size'], unique_only=s['unique_train'])
+                tsize = s['train_size'] if 'train_size' in s else None
+                ts = load_dataset(train_files, data_dir, data_size=tsize, unique_only=s['unique_train'])
                 vs = load_dataset(val_files, data_dir)
                 n = str(i) if 'name' not in s else s['name']
 
