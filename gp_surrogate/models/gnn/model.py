@@ -48,8 +48,8 @@ def train_gnn(model: torch.nn.Module, train_loader, n_epochs=5, optimizer=None, 
             data = data if transform is None else transform(data)
             data = data.to(device)
             features = data.features if 'features' in data else None
-            aux_in = torch.tensor(data.aux_in) if 'aux_in' in data and auxiliary_weight > 0.0 else None
-            aux_out = torch.tensor(data.aux_out) if 'aux_out' in data and auxiliary_weight > 0.0  else None
+            aux_in = torch.tensor(data.aux_in).to(device) if 'aux_in' in data and auxiliary_weight > 0.0 else None
+            aux_out = torch.tensor(data.aux_out).to(device) if 'aux_out' in data and auxiliary_weight > 0.0  else None
 
             out, pred_aux = model(data.x, data.edge_index, data.batch, features=features, aux_in=aux_in)  # Perform a single forward pass.
 
@@ -120,8 +120,8 @@ def eval_model(model, data_loader, criterion, metrics=None, transform=None, devi
         data = data if transform is None else transform(data)
         data = data.to(device)
         features = data.features if 'features' in data else None
-        aux_in = torch.tensor(data.aux_in) if 'aux_in' in data else None
-        aux_out = torch.tensor(data.aux_out) if 'aux_out' in data else None
+        aux_in = torch.tensor(data.aux_in).to(device) if 'aux_in' in data else None
+        aux_out = torch.tensor(data.aux_out).to(device) if 'aux_out' in data else None
 
         # TODO aux metrics
         out, pred_aux = model(data.x, data.edge_index, data.batch, features=features,
