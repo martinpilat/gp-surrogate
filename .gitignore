@@ -6,3 +6,4 @@ train_data
 *.pickle
 eval_test
 *.db
+checkpoints

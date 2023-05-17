@@ -217,7 +217,7 @@ def run_baseline(i, bench, out_prefix=""):
         toolbox.register("evaluate", eval_symb_reg, points=x, values=y)
 
     # create population
-    pop = toolbox.population(n=200)
+    pop = toolbox.population(n=100)
     hof = tools.HallOfFame(1)
 
     # create the stats object
@@ -327,7 +327,7 @@ def run_surrogate(i, bench, out_prefix=""):
         surrogate_kwargs = {'fn': lambda x: toolbox.evaluate(x)[0]}
 
     # create the initial population
-    pop = toolbox.population(n=200)
+    pop = toolbox.population(n=100)
     hof = tools.HallOfFame(1)
 
     # create the stats object

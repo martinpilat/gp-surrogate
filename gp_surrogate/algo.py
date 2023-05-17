@@ -231,6 +231,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
     print(surrogate_cls)
 
     start = datetime.datetime.now()
+    
+    pop_size = len(population)
 
     with joblib.Parallel(n_jobs=n_jobs) as parallel:
         logbook = tools.Logbook()
@@ -274,7 +276,14 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
             selected = toolbox.clone(offspring)
 
             # Vary the pool of individuals
-            offspring = varAnd(offspring, toolbox, cxpb, mutpb)
+            if len(archive) <= min_archive_size:
+                offspring = varAnd(offspring, toolbox, cxpb, mutpb)
+            else:
+                off = []
+                for _ in range(3):
+                    off += varAnd(toolbox.clone(offspring), toolbox, cxpb, mutpb)
+                
+                offspring = off
 
             if len(archive) > min_archive_size:
 
@@ -297,8 +306,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                     clf.fit(features, targets, first_gen=gen == 1)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
-                invalid_ind = [add_features(ind, pset) for ind in offspring if not ind.fitness.valid]
-                invalid_ix = [ix for ix in range(len(offspring)) if not offspring[ix].fitness.valid]
+                invalid_ind = [add_features(ind, pset) for ind in offspring]
+                invalid_ix = [ix for ix in range(len(offspring))]
                 pred_x = [ind for ind in invalid_ind]
                 preds = clf.predict(pred_x)
 
@@ -306,12 +315,14 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 # print(scipy.stats.spearmanr(preds, real_preds).correlation)
 
                 sorted_ix = np.argsort(preds)
-                bad_ix = sorted_ix[-int(2*len(invalid_ind)/3):]
+                bad_ix = sorted_ix[-2*pop_size:]
 
-                # replace the bad individuals by their parents, effectively removing them from the population
+                next_pop = []
                 for ind, ix in zip(invalid_ind, range(len(invalid_ix))):
-                    if ix in bad_ix:
-                        offspring[invalid_ix[ix]] = selected[invalid_ix[ix]]
+                    if ix not in bad_ix:
+                        next_pop.append(invalid_ind[ix])
+
+                offspring = next_pop
 
             # prepare the rest of the individuals for evaluation with the real fitness
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
