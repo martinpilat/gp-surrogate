@@ -1,0 +1,30 @@
+[
+    {
+        "data_dir": "baseline_0/run_0",
+        "train_ids": "0-10",
+        "val_ids": [10],
+        "rescale": true,
+        "unique_train": true
+    },
+    {
+        "data_dir": "baseline_0/run_0",
+        "train_ids": "0-20",
+        "val_ids": [20],
+        "rescale": true,
+        "unique_train": true
+    },
+    {
+        "data_dir": "baseline_0/run_0",
+        "train_ids": "0-30",
+        "val_ids": [30],
+        "rescale": true,
+        "unique_train": true
+    },
+    {
+        "data_dir": "baseline_0/run_0",
+        "train_ids": "0-40",
+        "val_ids": [40],
+        "rescale": true,
+        "unique_train": true
+    }
+]
