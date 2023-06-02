@@ -310,9 +310,10 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 invalid_ix = [ix for ix in range(len(offspring))]
                 pred_x = [ind for ind in invalid_ind]
                 preds = clf.predict(pred_x)
+                real_preds = fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
 
-                # import scipy.stats
-                # print(scipy.stats.spearmanr(preds, real_preds).correlation)
+                import scipy.stats
+                print(scipy.stats.spearmanr(preds, real_preds).correlation)
 
                 sorted_ix = np.argsort(preds)
                 bad_ix = sorted_ix[-2*pop_size:]
@@ -320,7 +321,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 next_pop = []
                 for ind, ix in zip(invalid_ind, range(len(invalid_ix))):
                     if ix not in bad_ix:
-                        next_pop.append(invalid_ind[ix])
+                        next_pop.append(ind)
 
                 offspring = next_pop
 
