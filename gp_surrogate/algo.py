@@ -273,7 +273,6 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
             # Select the next generation individuals
             offspring = toolbox.select(population, len(population))
-            selected = toolbox.clone(offspring)
 
             # Vary the pool of individuals
             if len(archive) <= min_archive_size:
@@ -289,9 +288,10 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
                 if clf is None or gen - last_train >= retrain_every:
                     last_train = gen
-                    train = archive
+                    train = archive[:-100]
+                    val = archive[-100:]
                     if len(train) > max_train_size:
-                        train = random.sample(archive, max_train_size)
+                        train = random.sample(train, max_train_size)
 
                     features = [ind for ind in train if ind.fitness.values[0] < train_fit_lim]
                     targets = [ind.fitness.values[0] for ind in train if ind.fitness.values[0] < train_fit_lim]
@@ -302,8 +302,26 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                         targets = [math.log(1+(t-a)) for t in targets]
 
                     # build the surrogate model (random forest regressor)
-                    clf = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
-                    clf.fit(features, targets, first_gen=gen == 1)
+                    clf_new = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
+                    clf_new.fit(features, targets, first_gen=gen == 1)
+
+                    if not clf:
+                        clf = clf_new
+                    else:
+                        features_val = [ind for ind in val if ind.fitness.values[0] < train_fit_lim]
+                        targets_val = [ind.fitness.values[0] for ind in val if ind.fitness.values[0] < train_fit_lim]
+
+                        preds_old = clf.predict(features_val)
+                        preds_new = clf_new.predict(features_val)
+
+                        import scipy.stats
+                        sp_old = scipy.stats.spearmanr(preds_old, targets_val).correlation
+                        sp_new = scipy.stats.spearmanr(preds_new, targets_val).correlation
+
+                        print(f'SPO: {sp_old}')
+                        print(f'SPN: {sp_new}')
+
+                        clf = clf_new if sp_new > sp_old else clf
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring]
