@@ -331,7 +331,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 real_preds = fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
 
                 import scipy.stats
-                print(scipy.stats.spearmanr(preds, real_preds).correlation)
+                print('SPR:' + scipy.stats.spearmanr(preds, real_preds).correlation)
 
                 sorted_ix = np.argsort(preds)
                 bad_ix = sorted_ix[-2*pop_size:]
@@ -365,11 +365,10 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
             # Replace the current population by the offspring
 
-            population[:] = tools.selBest(offspring, len(offspring) - 1) + tools.selBest(population, 1)
+            population[:] = tools.selBest(offspring + population, len(population))
 
             # Append the current generation statistics to the logbook
-            evaluated = [ind for ind in population if not ind.estimate]
-            record = stats.compile(evaluated) if stats else {}
+            record = stats.compile(population) if stats else {}
             if len(invalid_ind) > 0:
                 n_evals += len(invalid_ind)
                 logbook.record(gen=gen, nevals=len(invalid_ind),
