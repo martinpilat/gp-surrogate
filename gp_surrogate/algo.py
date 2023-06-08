@@ -455,7 +455,7 @@ def ea_baseline_simple(population, toolbox, cxpb, mutpb, max_evals, pset=None, s
                 halloffame.update(offspring)
 
             # Replace the current population by the offspring
-            population[:] = tools.selBest(offspring, len(population) - 1) + tools.selBest(population, 1)
+            population[:] = tools.selBest(offspring + population, len(population))
 
             # Append the current generation statistics to the logbook
             record = stats.compile(population) if stats else {}
