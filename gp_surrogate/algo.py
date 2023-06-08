@@ -331,7 +331,8 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 real_preds = fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
 
                 import scipy.stats
-                print('SPR:' + scipy.stats.spearmanr(preds, real_preds).correlation)
+                spr = scipy.stats.spearmanr(preds, real_preds).correlation
+                print(f'SPR: {spr}')
 
                 sorted_ix = np.argsort(preds)
                 bad_ix = sorted_ix[-2*pop_size:]
