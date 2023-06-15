@@ -8,7 +8,8 @@ import math
 import numpy as np
 import joblib
 import datetime
-
+import scipy.stats
+                        
 
 def add_features(ind, pset):
     """ Extracts the features from the individual and adds them a new field called 'features' created in the individual
@@ -305,16 +306,20 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                     clf_new = surrogate_cls(pset, n_jobs=n_jobs, **surrogate_kwargs)
                     clf_new.fit(features, targets, first_gen=gen == 1)
 
+                    clf_eval = None
+
+                    features_val = [ind for ind in val if ind.fitness.values[0] < train_fit_lim]
+                    targets_val = [ind.fitness.values[0] for ind in val if ind.fitness.values[0] < train_fit_lim]
+                    import scipy.stats
                     if not clf:
                         clf = clf_new
+                        preds = clf.predict(features_val)
+                        clf_eval = scipy.stats.spearmanr(preds, targets_val).correlation
+                        print(f'SP: {clf_eval}')
                     else:
-                        features_val = [ind for ind in val if ind.fitness.values[0] < train_fit_lim]
-                        targets_val = [ind.fitness.values[0] for ind in val if ind.fitness.values[0] < train_fit_lim]
-
                         preds_old = clf.predict(features_val)
                         preds_new = clf_new.predict(features_val)
 
-                        import scipy.stats
                         sp_old = scipy.stats.spearmanr(preds_old, targets_val).correlation
                         sp_new = scipy.stats.spearmanr(preds_new, targets_val).correlation
 
@@ -322,13 +327,18 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                         print(f'SPN: {sp_new}')
 
                         clf = clf_new if sp_new > sp_old else clf
+                        clf_eval = max(sp_old, sp_new)
+
+                    if clf_eval < 0.2:
+                        print('Low quality surrogate -- using random surrogate instead')
+                        clf = surrogate.RandomSurrogate()
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring]
                 invalid_ix = [ix for ix in range(len(offspring))]
                 pred_x = [ind for ind in invalid_ind]
                 preds = clf.predict(pred_x)
-                real_preds = fitnesses = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
+                real_preds = parallel(joblib.delayed(toolbox.evaluate)(ind) for ind in invalid_ind)
 
                 import scipy.stats
                 spr = scipy.stats.spearmanr(preds, real_preds).correlation
@@ -340,7 +350,10 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
                 next_pop = []
                 for ind, ix in zip(invalid_ind, range(len(invalid_ix))):
                     if ix not in bad_ix:
-                        next_pop.append(ind)
+                        if random.uniform(0,1) < 0.8:
+                            next_pop.append(ind)
+                        else:
+                            next_pop.append(invalid_ind[random.choice(bad_ix)])
 
                 offspring = next_pop
 
