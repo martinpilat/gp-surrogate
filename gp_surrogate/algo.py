@@ -331,7 +331,7 @@ def ea_surrogate_simple(population, toolbox, cxpb, mutpb, max_evals, pset,
 
                     if clf_eval < 0.2:
                         print('Low quality surrogate -- using random surrogate instead')
-                        clf = surrogate.RandomSurrogate()
+                        clf = surrogate.RandomSurrogate(None)
 
                 # Evaluate the individuals with an invalid fitness using the surrogate model
                 invalid_ind = [add_features(ind, pset) for ind in offspring]
